@@ -2598,7 +2598,7 @@ textarea::placeholder {
 }
 
 /* Carousel styles */
-.gravity-carousel {
+.wind-carousel {
     position: relative;
     border: 1px solid var(--border-color);
     border-radius: 8px;
@@ -2609,7 +2609,7 @@ textarea::placeholder {
     max-width: 600px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
-.gravity-carousel-slides {
+.wind-carousel-slides {
     position: relative;
     width: 100%;
     min-height: 220px;
@@ -2617,13 +2617,13 @@ textarea::placeholder {
     align-items: center;
     justify-content: center;
 }
-.gravity-carousel-slide {
+.wind-carousel-slide {
     display: none;
     width: 100%;
     padding: 16px 48px;
     box-sizing: border-box;
 }
-.gravity-carousel-slide.active {
+.wind-carousel-slide.active {
     display: block;
 }
 .carousel-slide-content {
@@ -2651,7 +2651,7 @@ textarea::placeholder {
     margin: 0;
     width: 100%;
 }
-.gravity-carousel-controls {
+.wind-carousel-controls {
     position: absolute;
     top: 50%;
     left: 0;
@@ -3107,7 +3107,7 @@ textarea::placeholder {
 }
 
 /* ==========================================================================
-   Gravity Upgrades Styles (Tabs, Artifacts, Permissions, Modal, Playback)
+   Wind Upgrades Styles (Tabs, Artifacts, Permissions, Modal, Playback)
    ========================================================================== */
 
 /* Tabs Navigation Header */

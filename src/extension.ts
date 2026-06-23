@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { GravityWebviewProvider } from './webviewProvider';
+import { WindWebviewProvider } from './webviewProvider';
 import { ToolsManager } from './tools';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Wind extension is now active!');
 
-    const provider = new GravityWebviewProvider(context);
+    const provider = new WindWebviewProvider(context);
     context.subscriptions.push(provider);
 
     // Create Autocomplete Output Channel for error logging and tracking
@@ -41,7 +41,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
-            GravityWebviewProvider.viewType,
+            WindWebviewProvider.viewType,
             provider,
             {
                 webviewOptions: {

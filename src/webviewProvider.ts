@@ -86,7 +86,7 @@ interface ScheduledTask {
     nextRunTime: number;
 }
 
-export class GravityWebviewProvider implements vscode.WebviewViewProvider {
+export class WindWebviewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'wind-agent.chatView';
     private _view?: vscode.WebviewView;
     private _agent?: Agent;
@@ -290,7 +290,7 @@ export class GravityWebviewProvider implements vscode.WebviewViewProvider {
         }
         const homeDir = os.homedir();
         const globalConfigDir = path.join(homeDir, '.wind-agent');
-        const oldConfigDir = path.join(homeDir, '.antigravity');
+        const oldConfigDir = path.join(homeDir, '.wind');
         if (fs.existsSync(oldConfigDir) && !fs.existsSync(globalConfigDir)) {
             try {
                 fs.renameSync(oldConfigDir, globalConfigDir);
@@ -621,7 +621,7 @@ export class GravityWebviewProvider implements vscode.WebviewViewProvider {
                             const workspaceRoot = workspaceFolders[0].uri.fsPath;
                             const fullPath = path.join(workspaceRoot, safeRelativePath);
                             const workspaceHash = this._getWorkspaceHash();
-                            const backupPath = path.join(os.tmpdir(), 'gravity-backups', workspaceHash, safeRelativePath);
+                            const backupPath = path.join(os.tmpdir(), 'wind-backups', workspaceHash, safeRelativePath);
 
                             if (await this._fileExists(backupPath)) {
                                 const backupUri = vscode.Uri.file(backupPath);
@@ -651,7 +651,7 @@ export class GravityWebviewProvider implements vscode.WebviewViewProvider {
                             const workspaceRoot = workspaceFolders[0].uri.fsPath;
                             const fullPath = path.join(workspaceRoot, safeRelativePath);
                             const workspaceHash = this._getWorkspaceHash();
-                            const backupPath = path.join(os.tmpdir(), 'gravity-backups', workspaceHash, safeRelativePath);
+                            const backupPath = path.join(os.tmpdir(), 'wind-backups', workspaceHash, safeRelativePath);
 
                             if (await this._fileExists(backupPath)) {
                                 const backupUri = vscode.Uri.file(backupPath);
@@ -730,7 +730,7 @@ export class GravityWebviewProvider implements vscode.WebviewViewProvider {
                     const workspaceFolders = vscode.workspace.workspaceFolders;
                     if (workspaceFolders && workspaceFolders.length > 0) {
                         const workspaceHash = this._getWorkspaceHash();
-                        const backupDir = path.join(os.tmpdir(), 'gravity-backups', workspaceHash);
+                        const backupDir = path.join(os.tmpdir(), 'wind-backups', workspaceHash);
                         try {
                             if (await this._fileExists(backupDir)) {
                                 await fs.promises.rm(backupDir, { recursive: true, force: true });
@@ -764,7 +764,7 @@ export class GravityWebviewProvider implements vscode.WebviewViewProvider {
                         const workspaceFolders = vscode.workspace.workspaceFolders;
                         if (workspaceFolders && workspaceFolders.length > 0) {
                             const workspaceHash = this._getWorkspaceHash();
-                            const backupDir = path.join(os.tmpdir(), 'gravity-backups', workspaceHash);
+                            const backupDir = path.join(os.tmpdir(), 'wind-backups', workspaceHash);
                             const backupPath = path.join(backupDir, relativePath);
                             try {
                                 if (await this._fileExists(backupPath)) {
@@ -1037,6 +1037,8 @@ export class GravityWebviewProvider implements vscode.WebviewViewProvider {
             if (aiConfig.provider === 'gemini') {
                 const apiBase = (aiConfig.apiBase || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
                 endpoint = `${apiBase}/v1beta/openai`;
+            } else if (aiConfig.provider === 'gameloft') {
+                endpoint = (aiConfig.apiBase || 'https://ask.ai.gameloft.org/api').replace(/\/+$/, '');
             } else {
                 endpoint = (aiConfig.apiBase || 'https://api.openai.com/v1').replace(/\/+$/, '');
             }
@@ -1720,7 +1722,7 @@ ${errorCode}
                     this._view?.webview.postMessage(agentMsg);
                 }
 
-                // Google Antigravity-like implementation plan file creation
+                // Google Wind-like implementation plan file creation
                 if (isPlanMode) {
                     try {
                         let planContent = finalResult;
@@ -1819,7 +1821,7 @@ ${errorCode}
         }
         const homeDir = os.homedir();
         const configDir = path.join(homeDir, '.wind-agent');
-        const oldConfigDir = path.join(homeDir, '.antigravity');
+        const oldConfigDir = path.join(homeDir, '.wind');
         if (fs.existsSync(oldConfigDir) && !fs.existsSync(configDir)) {
             try {
                 fs.renameSync(oldConfigDir, configDir);
@@ -2411,7 +2413,7 @@ Verify that you have fully completed the requested task step before proceeding.`
                     this._view?.webview.postMessage(finalMsg);
                 }
 
-                // Google Antigravity-like walkthrough file creation
+                // Google Wind-like walkthrough file creation
                 let walkthroughText = '';
                 try {
                     const walkthroughPrompt = `Please write a concise walkthrough of the changes that were just implemented in the workspace.
@@ -2606,7 +2608,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
         if (workspaceFolders && workspaceFolders.length > 0) {
             const workspaceRoot = workspaceFolders[0].uri.fsPath;
             const workspaceHash = this._getWorkspaceHash();
-            const backupDir = path.join(os.tmpdir(), 'gravity-backups', workspaceHash);
+            const backupDir = path.join(os.tmpdir(), 'wind-backups', workspaceHash);
             const metadataPath = path.join(backupDir, 'metadata.json');
 
             let metadata: { newFiles: string[] } = { newFiles: [] };
@@ -2697,7 +2699,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (workspaceFolders && workspaceFolders.length > 0) {
             const workspaceHash = this._getWorkspaceHash();
-            const backupDir = path.join(os.tmpdir(), 'gravity-backups', workspaceHash);
+            const backupDir = path.join(os.tmpdir(), 'wind-backups', workspaceHash);
             try {
                 if (fs.existsSync(backupDir)) {
                     const walkBackups = async (dir: string) => {
@@ -2749,7 +2751,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
 
         const workspaceRoot = workspaceFolders[0].uri.fsPath;
         const workspaceHash = this._getWorkspaceHash();
-        const backupDir = path.join(os.tmpdir(), 'gravity-backups', workspaceHash);
+        const backupDir = path.join(os.tmpdir(), 'wind-backups', workspaceHash);
 
         // Map relative paths to operations in parallel
         const filePromises = Array.from(this._sessionModifiedFiles).map(async (relativePath) => {

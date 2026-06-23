@@ -420,7 +420,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'runTerminalCommand',
-        description: 'Executes a command inside the visible active VS Code terminal panel (Gravity Agent Terminal).',
+        description: 'Executes a command inside the visible active VS Code terminal panel (Wind Agent Terminal).',
         parameters: {
             type: 'object',
             properties: {
@@ -499,7 +499,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'searchKnowledgeBase',
-        description: 'Searches for key terms or query strings in the local project knowledge base files (.vscode/gravity-knowledge/).',
+        description: 'Searches for key terms or query strings in the local project knowledge base files (.vscode/wind-knowledge/).',
         parameters: {
             type: 'object',
             properties: {
@@ -567,7 +567,7 @@ export const TOOLS: ToolDefinition[] = [
 ];
 
 const AGENT_EFFECT_CSS = `
-#gravity-agent-cursor {
+#wind-agent-cursor {
     position: fixed;
     width: 24px;
     height: 24px;
@@ -581,20 +581,20 @@ const AGENT_EFFECT_CSS = `
     opacity: 0;
     transform: translate(-50%, -50%) scale(0);
 }
-#gravity-agent-cursor.active {
+#wind-agent-cursor.active {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
 }
-.gravity-agent-ripple {
+.wind-agent-ripple {
     position: fixed;
     border: 4px solid #8b5cf6;
     border-radius: 50%;
     pointer-events: none;
     z-index: 999999998;
     transform: translate(-50%, -50%);
-    animation: gravity-ripple-animation 0.6s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+    animation: wind-ripple-animation 0.6s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
 }
-@keyframes gravity-ripple-animation {
+@keyframes wind-ripple-animation {
     0% {
         width: 0px;
         height: 0px;
@@ -607,17 +607,17 @@ const AGENT_EFFECT_CSS = `
         border-color: #3b82f6;
     }
 }
-.gravity-agent-highlight {
+.wind-agent-highlight {
     outline: 3px solid #8b5cf6 !important;
     outline-offset: 2px !important;
     transition: outline 0.3s ease;
 }
-@property --gravity-border-angle {
+@property --wind-border-angle {
     syntax: '<angle>';
     initial-value: 0deg;
     inherits: false;
 }
-#gravity-agent-border {
+#wind-agent-border {
     position: fixed;
     top: 0;
     left: 0;
@@ -625,32 +625,32 @@ const AGENT_EFFECT_CSS = `
     bottom: 0;
     box-sizing: border-box;
     border: 5px solid;
-    border-image: conic-gradient(from var(--gravity-border-angle), #4285f4 0%, #9b72cb 25%, #d96570 50%, #f49e4c 75%, #4285f4 100%) 1;
+    border-image: conic-gradient(from var(--wind-border-angle), #4285f4 0%, #9b72cb 25%, #d96570 50%, #f49e4c 75%, #4285f4 100%) 1;
     pointer-events: none;
     z-index: 999999997;
-    animation: gravity-border-rotate 4s linear infinite;
+    animation: wind-border-rotate 4s linear infinite;
 }
-@keyframes gravity-border-rotate {
+@keyframes wind-border-rotate {
     to {
-        --gravity-border-angle: 360deg;
+        --wind-border-angle: 360deg;
     }
 }
 `;
 
 const AGENT_EFFECT_JS = `
-window.__gravityAgentCursorPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+window.__windAgentCursorPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 
-window.__gravityAgentShowEffect = function(x, y, type) {
-    let cursor = document.getElementById('gravity-agent-cursor');
+window.__windAgentShowEffect = function(x, y, type) {
+    let cursor = document.getElementById('wind-agent-cursor');
     if (!cursor) {
         cursor = document.createElement('div');
-        cursor.id = 'gravity-agent-cursor';
+        cursor.id = 'wind-agent-cursor';
         document.body.appendChild(cursor);
     }
     
     // Position cursor at previous position
-    cursor.style.left = window.__gravityAgentCursorPos.x + 'px';
-    cursor.style.top = window.__gravityAgentCursorPos.y + 'px';
+    cursor.style.left = window.__windAgentCursorPos.x + 'px';
+    cursor.style.top = window.__windAgentCursorPos.y + 'px';
     
     // Make visible
     cursor.classList.add('active');
@@ -660,13 +660,13 @@ window.__gravityAgentShowEffect = function(x, y, type) {
         setTimeout(() => {
             cursor.style.left = x + 'px';
             cursor.style.top = y + 'px';
-            window.__gravityAgentCursorPos = { x, y };
+            window.__windAgentCursorPos = { x, y };
             
             // After movement is completed, show click/type effect
             setTimeout(() => {
                 // Ripple effect
                 const ripple = document.createElement('div');
-                ripple.className = 'gravity-agent-ripple';
+                ripple.className = 'wind-agent-ripple';
                 ripple.style.left = x + 'px';
                 ripple.style.top = y + 'px';
                 if (type === 'type') {
@@ -686,11 +686,11 @@ window.__gravityAgentShowEffect = function(x, y, type) {
     });
 };
 
-window.__gravityAgentHighlightElement = function(element, duration = 1500) {
+window.__windAgentHighlightElement = function(element, duration = 1500) {
     if (!element) return;
-    element.classList.add('gravity-agent-highlight');
+    element.classList.add('wind-agent-highlight');
     setTimeout(() => {
-        element.classList.remove('gravity-agent-highlight');
+        element.classList.remove('wind-agent-highlight');
     }, duration);
 };
 `;
@@ -1040,12 +1040,12 @@ export class ToolsManager {
 
     private async saveKnowledgeItem(title: string, content: string): Promise<string> {
         try {
-            const kiDir = path.join(this.workspaceRoot, '.vscode', 'gravity-knowledge');
+            const kiDir = path.join(this.workspaceRoot, '.vscode', 'wind-knowledge');
             await fs.mkdir(kiDir, { recursive: true });
             const safeTitle = title.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
             const filePath = path.join(kiDir, `${safeTitle}.md`);
             await fs.writeFile(filePath, content, 'utf8');
-            return `Knowledge item "${title}" saved successfully to .vscode/gravity-knowledge/${safeTitle}.md`;
+            return `Knowledge item "${title}" saved successfully to .vscode/wind-knowledge/${safeTitle}.md`;
         } catch (error: any) {
             return `Error saving knowledge item: ${error.message}`;
         }
@@ -1053,7 +1053,7 @@ export class ToolsManager {
 
     private async searchKnowledgeBase(query: string): Promise<string> {
         try {
-            const kiDir = path.join(this.workspaceRoot, '.vscode', 'gravity-knowledge');
+            const kiDir = path.join(this.workspaceRoot, '.vscode', 'wind-knowledge');
             const stat = await fs.stat(kiDir).catch(() => null);
             if (!stat || !stat.isDirectory()) {
                 return 'No knowledge items found in the workspace (directory does not exist).';
@@ -1092,7 +1092,7 @@ export class ToolsManager {
 
     private async readKnowledgeItem(title: string): Promise<string> {
         try {
-            const kiDir = path.join(this.workspaceRoot, '.vscode', 'gravity-knowledge');
+            const kiDir = path.join(this.workspaceRoot, '.vscode', 'wind-knowledge');
             // Support both "rules.md" and "rules"
             let filename = title;
             if (!filename.endsWith('.md') && !filename.endsWith('.json') && !filename.endsWith('.txt')) {
@@ -1113,7 +1113,7 @@ export class ToolsManager {
                     const content = await fs.readFile(finalPath, 'utf8');
                     return `--- Knowledge Item: ${match} ---\n${content}`;
                 }
-                return `Error: Knowledge item file "${cleanFilename}" not found in .vscode/gravity-knowledge/`;
+                return `Error: Knowledge item file "${cleanFilename}" not found in .vscode/wind-knowledge/`;
             }
 
             const content = await fs.readFile(targetPath, 'utf8');
@@ -1726,7 +1726,7 @@ export class ToolsManager {
             const response = await axios.get(urlStr, {
                 timeout: 10000,
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (compatible; GravityAgent/1.0)'
+                    'User-Agent': 'Mozilla/5.0 (compatible; WindAgent/1.0)'
                 },
                 maxContentLength: 5 * 1024 * 1024, // 5MB limit
                 maxBodyLength: 5 * 1024 * 1024,
@@ -1758,7 +1758,7 @@ export class ToolsManager {
 
     public async backupFile(relativeFilePath: string): Promise<void> {
         const workspaceHash = crypto.createHash('md5').update(this.workspaceRoot).digest('hex');
-        const backupDir = path.join(os.tmpdir(), 'gravity-backups', workspaceHash);
+        const backupDir = path.join(os.tmpdir(), 'wind-backups', workspaceHash);
         const backupPath = path.join(backupDir, relativeFilePath);
         
         const currentLock = ToolsManager.backupLock;
@@ -1923,8 +1923,8 @@ export class ToolsManager {
 
             // Trigger the custom cursor movement and ripple animations
             await ToolsManager.page.evaluate(async (coords, actType) => {
-                if (typeof (window as any).__gravityAgentShowEffect === 'function') {
-                    await (window as any).__gravityAgentShowEffect(coords.x, coords.y, actType);
+                if (typeof (window as any).__windAgentShowEffect === 'function') {
+                    await (window as any).__windAgentShowEffect(coords.x, coords.y, actType);
                 }
             }, coordinates, type);
 
@@ -1942,8 +1942,8 @@ export class ToolsManager {
                 } else {
                     el = document.querySelector(sel);
                 }
-                if (el && typeof (window as any).__gravityAgentHighlightElement === 'function') {
-                    (window as any).__gravityAgentHighlightElement(el, 1500);
+                if (el && typeof (window as any).__windAgentHighlightElement === 'function') {
+                    (window as any).__windAgentHighlightElement(el, 1500);
                 }
             }, selector, text);
 
@@ -2008,20 +2008,20 @@ export class ToolsManager {
             // Setup injection for any future navigations
             await ToolsManager.page.evaluateOnNewDocument((css, js) => {
                 const inject = () => {
-                    if (document.getElementById('gravity-agent-style')) return;
+                    if (document.getElementById('wind-agent-style')) return;
                     
                     const style = document.createElement('style');
-                    style.id = 'gravity-agent-style';
+                    style.id = 'wind-agent-style';
                     style.textContent = css;
                     (document.head || document.documentElement).appendChild(style);
 
                     const script = document.createElement('script');
-                    script.id = 'gravity-agent-script';
+                    script.id = 'wind-agent-script';
                     script.textContent = js;
                     (document.head || document.documentElement).appendChild(script);
 
                     const border = document.createElement('div');
-                    border.id = 'gravity-agent-border';
+                    border.id = 'wind-agent-border';
                     (document.body || document.documentElement).appendChild(border);
                 };
 
@@ -2036,20 +2036,20 @@ export class ToolsManager {
 
             // Inject immediately into the current page context
             await ToolsManager.page.evaluate((css, js) => {
-                if (document.getElementById('gravity-agent-style')) return;
+                if (document.getElementById('wind-agent-style')) return;
                 
                 const style = document.createElement('style');
-                style.id = 'gravity-agent-style';
+                style.id = 'wind-agent-style';
                 style.textContent = css;
                 (document.head || document.documentElement).appendChild(style);
 
                 const script = document.createElement('script');
-                script.id = 'gravity-agent-script';
+                script.id = 'wind-agent-script';
                 script.textContent = js;
                 (document.head || document.documentElement).appendChild(script);
 
                 const border = document.createElement('div');
-                border.id = 'gravity-agent-border';
+                border.id = 'wind-agent-border';
                 (document.body || document.documentElement).appendChild(border);
             }, AGENT_EFFECT_CSS, AGENT_EFFECT_JS);
 
@@ -2542,13 +2542,13 @@ Do NOT choose more than one action at a time. Explain your reasoning briefly bef
 
     private async runTerminalCommand(command: string): Promise<string> {
         try {
-            let terminal = vscode.window.terminals.find(t => t.name === 'Gravity Agent Terminal');
+            let terminal = vscode.window.terminals.find(t => t.name === 'Wind Agent Terminal');
             if (!terminal) {
-                terminal = vscode.window.createTerminal('Gravity Agent Terminal');
+                terminal = vscode.window.createTerminal('Wind Agent Terminal');
             }
             terminal.show(true);
             terminal.sendText(command);
-            return `Successfully sent command "${command}" to Gravity Agent Terminal panel.`;
+            return `Successfully sent command "${command}" to Wind Agent Terminal panel.`;
         } catch (error: any) {
             return `Failed to run command in VS Code Terminal: ${error.message}`;
         }
@@ -2718,7 +2718,7 @@ Do NOT choose more than one action at a time. Explain your reasoning briefly bef
     private async searchSemanticCode(query: string, signal?: AbortSignal): Promise<string> {
         try {
             const kiDir = path.join(this.workspaceRoot, '.vscode');
-            const dbPath = path.join(kiDir, 'gravity-embeddings.json');
+            const dbPath = path.join(kiDir, 'wind-embeddings.json');
             
             // 1. Load existing database or initialize a new one
             let db: {
@@ -2735,7 +2735,7 @@ Do NOT choose more than one action at a time. Explain your reasoning briefly bef
                     db = JSON.parse(data);
                 }
             } catch (e) {
-                console.error('Failed to read gravity-embeddings.json:', e);
+                console.error('Failed to read wind-embeddings.json:', e);
             }
             
             if (!db.files) {
@@ -2831,7 +2831,7 @@ Do NOT choose more than one action at a time. Explain your reasoning briefly bef
                     await fs.mkdir(kiDir, { recursive: true });
                     await fs.writeFile(dbPath, JSON.stringify(db, null, 2), 'utf8');
                 } catch (e) {
-                    console.error('Failed to write gravity-embeddings.json:', e);
+                    console.error('Failed to write wind-embeddings.json:', e);
                 }
             }
             

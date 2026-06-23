@@ -1,9 +1,9 @@
 {
-  "name": "wind-agent",
-  "displayName": "Wind Coding Assistant",
+  "name": "wind-agent-assistant",
+  "displayName": "Wind Agent Coding Assistant",
   "description": "AI coding assistant.",
   "version": "0.0.1",
-  "publisher": "PhongPham",
+  "publisher": "PhamThanhPhong",
   "icon": "media/icon.png",
   "license": "MIT",
   "repository": "https://github.com/thanhphong3/wind-ai-assistant",

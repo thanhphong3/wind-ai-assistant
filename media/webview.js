@@ -2,8 +2,8 @@
     const vscode = acquireVsCodeApi();
 
     window.moveCarousel = function(button, direction) {
-        const carousel = button.closest('.gravity-carousel');
-        const slidesContainer = carousel.querySelector('.gravity-carousel-slides');
+        const carousel = button.closest('.wind-carousel');
+        const slidesContainer = carousel.querySelector('.wind-carousel-slides');
         const slides = Array.from(slidesContainer.children);
         let activeIdx = slides.findIndex(s => s.classList.contains('active'));
         
@@ -2133,16 +2133,16 @@
                     }
                 }
                 
-                return `<div class="gravity-carousel-slide ${activeClass}">${slideHtml}</div>`;
+                return `<div class="wind-carousel-slide ${activeClass}">${slideHtml}</div>`;
             }).join('\n');
             
-            const carouselPlaceholder = `___GRAVITY_CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}___`;
+            const carouselPlaceholder = `___WIND_CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}___`;
             codeBlocks.push(`
-<div class="gravity-carousel">
-    <div class="gravity-carousel-slides">
+<div class="wind-carousel">
+    <div class="wind-carousel-slides">
         ${formattedSlides}
     </div>
-    <div class="gravity-carousel-controls">
+    <div class="wind-carousel-controls">
         <button class="carousel-btn prev" onclick="moveCarousel(this, -1)">&#10094;</button>
         <button class="carousel-btn next" onclick="moveCarousel(this, 1)">&#10095;</button>
     </div>
@@ -2153,7 +2153,7 @@
 
         // Extract and temporarily store code blocks to prevent them from being formatted or escaped
         html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-            const placeholder = `___GRAVITY_CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}___`;
+            const placeholder = `___WIND_CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}___`;
             codeBlocks.push(`<pre><code class="language-${lang}">${code.trim()}</code></pre>`);
             return placeholder;
         });
@@ -2206,7 +2206,7 @@
             }
             
             // Check if line is a code block placeholder
-            if (line.startsWith('___GRAVITY_CODE_BLOCK_PLACEHOLDER_')) {
+            if (line.startsWith('___WIND_CODE_BLOCK_PLACEHOLDER_')) {
                 if (currentListType) {
                     processedLines.push(`</${currentListType}>`);
                     currentListType = null;
@@ -2267,7 +2267,7 @@
 
         // Restore the code blocks
         for (let i = 0; i < codeBlocks.length; i++) {
-            html = html.replace(`___GRAVITY_CODE_BLOCK_PLACEHOLDER_${i}___`, codeBlocks[i]);
+            html = html.replace(`___WIND_CODE_BLOCK_PLACEHOLDER_${i}___`, codeBlocks[i]);
         }
 
         if (!skipLinkify) {
@@ -4209,6 +4209,7 @@
         gemini: 'https://generativelanguage.googleapis.com',
         chatgpt: 'https://api.openai.com/v1',
         claude: 'https://openrouter.ai/api/v1',
+        gameloft: 'https://ask.ai.gameloft.org/api',
         custom: 'http://localhost:3000/v1'
     };
     
@@ -4216,6 +4217,7 @@
         gemini: 'Google Gemini',
         chatgpt: 'OpenAI ChatGPT',
         claude: 'Anthropic Claude',
+        gameloft: 'Gameloft AI',
         custom: 'Custom AI'
     };
     
@@ -4231,6 +4233,10 @@
         claude: {
             keys: 'Paste OpenRouter API Key here (e.g. sk-or-...)',
             models: 'e.g. anthropic/claude-3.5-sonnet'
+        },
+        gameloft: {
+            keys: 'Paste Gameloft API Key here (e.g. sk-...)',
+            models: 'e.g. Autodetect or specific model names'
         },
 
         custom: {

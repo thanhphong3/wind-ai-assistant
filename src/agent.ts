@@ -88,7 +88,7 @@ export class Agent {
 
     private async loadKnowledgeItems(): Promise<string> {
         try {
-            const kiDir = path.join(this.workspaceRoot, '.vscode', 'gravity-knowledge');
+            const kiDir = path.join(this.workspaceRoot, '.vscode', 'wind-knowledge');
             const stat = await fs.promises.stat(kiDir).catch(() => null);
             if (!stat || !stat.isDirectory()) return '';
             
@@ -165,13 +165,13 @@ Ensure you use the exact parameter names listed above. For example, to read a fi
 
         let promptText = '';
         if (mode === 'chat') {
-            promptText = `You are Gravity Agent, a helpful software engineering assistant.
+            promptText = `You are Wind Agent, a helpful software engineering assistant.
 You are in CHAT mode. Converse with the user, answer their questions, explain concepts, or help them brainstorm.
 You do NOT have access to workspace tools in this mode.
 Keep your responses concise, direct, and focused.`;
         } else if (mode === 'plan') {
             if (this.fastAction) {
-                promptText = `You are Gravity Agent, an autonomous software engineering assistant.
+                promptText = `You are Wind Agent, an autonomous software engineering assistant.
 You are in PLAN mode with Fast Action enabled. Your goal is to analyze the workspace and output ONLY the tasks block.
 Workspace: ${this.workspaceRoot}
 
@@ -180,7 +180,7 @@ Rules:
 2. Output ONLY the task list inside [PLAN_START] and [PLAN_END] blocks when you are ready to present the plan. Do NOT write any other sections, descriptions, or conversational explanations.
 3. Absolutely no introductions, conclusions, or thought summaries.`;
             } else {
-                promptText = `You are Gravity Agent, an autonomous software engineering assistant.
+                promptText = `You are Wind Agent, an autonomous software engineering assistant.
 You are in PLAN mode. Your goal is to analyze the workspace and write a detailed implementation plan.
 Workspace: ${this.workspaceRoot}
 
@@ -188,7 +188,7 @@ Rules:
 4. Keep your reasoning clear and responses concise.`;
             }
         } else if (mode === 'auto') {
-            promptText = `You are Gravity Agent, an autonomous software engineering assistant.
+            promptText = `You are Wind Agent, an autonomous software engineering assistant.
 Workspace: ${this.workspaceRoot}
 
 You are in AUTO Mode. You must exercise judgment on whether the user's request warrants an implementation plan before taking action.
@@ -227,7 +227,7 @@ Tool Guidelines:
 - saveKnowledgeItem: Use this proactively to save any important setup, architectural rules, or context you learn about the project.
 - If 'implementation_plan.md' or 'task.md' exists, read/reference them to guide your work.`;
         } else if (mode === 'goal') {
-            promptText = `You are Gravity Agent, an autonomous software engineering assistant running in GOAL mode.
+            promptText = `You are Wind Agent, an autonomous software engineering assistant running in GOAL mode.
 Workspace: ${this.workspaceRoot}
 
 You are executing a high-level, long-running goal. You have a larger budget of reasoning steps (up to 100 loops) to complete the task thoroughly.
@@ -239,7 +239,7 @@ Rules:
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
 4. Verify your work using automated tests and checks before completing the goal.`;
         } else if (mode === 'grill') {
-            promptText = `You are Gravity Agent, an autonomous requirements-alignment and interviewing assistant running in GRILL-ME mode.
+            promptText = `You are Wind Agent, an autonomous requirements-alignment and interviewing assistant running in GRILL-ME mode.
 Workspace: ${this.workspaceRoot}
 
 Your objective is to interview the developer using a set of 3 to 5 targeted, highly intelligent architectural questions to clarify requirements, clear up design ambiguity, identify potential bottlenecks, and align on a technical approach before a plan is created.
@@ -252,7 +252,7 @@ Rules:
 2. Rely only on read-only tools to gain context.
 3. Keep responses structured, professional, and clear.`;
         } else {
-            promptText = `You are Gravity Agent, an autonomous software engineering assistant.
+            promptText = `You are Wind Agent, an autonomous software engineering assistant.
 Workspace: ${this.workspaceRoot}
 
 Rules:
@@ -272,8 +272,8 @@ Tool Guidelines:
         }
 
         if (mode !== 'chat') {
-            promptText += `\n\nGravity Upgrades & Guidelines:
-- Scratch Workspace: For any temporary scripts, debug files, or trial code, you MUST use the \`.gravity-scratch/\` directory under workspace root.
+            promptText += `\n\nWind Upgrades & Guidelines:
+- Scratch Workspace: For any temporary scripts, debug files, or trial code, you MUST use the \`.wind-scratch/\` directory under workspace root.
 - Interactive Questions: If you encounter design options, requirements ambiguity, or need user decisions, you MUST invoke the \`askQuestion\` tool. Do NOT guess or make unverified assumptions.`;
         }
 
@@ -324,7 +324,7 @@ CRITICAL: Fast Action is enabled. You must execute tools immediately.
         const isOpenAI = this.endpoint.includes('api.openai.com');
         const hasKey = Array.isArray(this.apiKey) ? this.apiKey.length > 0 : !!this.apiKey;
         if (!hasKey && (isGoogle || isOpenAI)) {
-            throw new Error('API Key is missing. Please set it in VS Code Settings (Gravity Agent) or in your ai_config.json file.');
+            throw new Error('API Key is missing. Please set it in VS Code Settings (Wind Agent) or in your ai_config.json file.');
         }
 
         // Ensure system prompt is updated based on the current mode

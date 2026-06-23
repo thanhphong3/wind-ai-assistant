@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com ${cspSource}; font-src 'self' https://fonts.gstatic.com ${cspSource}; script-src 'self' ${cspSource}; img-src 'self' data: ${cspSource}; connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://api.anthropic.com https://openrouter.ai ${cspSource};">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com ${cspSource}; font-src 'self' https://fonts.gstatic.com ${cspSource}; script-src 'self' ${cspSource}; img-src 'self' data: ${cspSource}; connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://api.anthropic.com https://openrouter.ai https://ask.ai.gameloft.org ${cspSource};">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="${styleUri}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -471,7 +471,10 @@
                             <span class="provider-logo">🟠</span>
                             <span class="provider-name">Anthropic / Claude</span>
                         </button>
-
+                        <button class="provider-card-btn" data-provider="gameloft" type="button">
+                            <span class="provider-logo">🎮</span>
+                            <span class="provider-name">Gameloft AI</span>
+                        </button>
                         <button class="provider-card-btn" data-provider="custom" type="button">
                             <span class="provider-logo">🛠️</span>
                             <span class="provider-name">Custom AI</span>
