@@ -16,7 +16,9 @@ const config = {
     },
     devtool: 'source-map',
     externals: {
-        vscode: 'commonjs vscode'
+        vscode: 'commonjs vscode',
+        axios: 'commonjs axios',
+        'puppeteer-core': 'commonjs puppeteer-core'
     },
     resolve: {
         extensions: ['.ts', '.js']

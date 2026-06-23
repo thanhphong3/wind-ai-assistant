@@ -1,19 +1,14 @@
 {
   "name": "wind-agent",
-  "displayName": "Wind AI",
-  "description": "An autonomous AI coding assistant for developers.",
+  "displayName": "Wind Coding Assistant",
+  "description": "AI coding assistant.",
   "version": "0.0.1",
   "publisher": "PhongPham",
   "icon": "media/icon.png",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/thanhphong3/wind-ai-assistant.git"
-  },
-  "homepage": "https://github.com/thanhphong3/wind-ai-assistant#readme",
-  "bugs": {
-    "url": "https://github.com/thanhphong3/wind-ai-assistant/issues"
-  },
+  "repository": "https://github.com/thanhphong3/wind-ai-assistant",
+  "homepage": "https://github.com/thanhphong3/wind-ai-assistant",
+  "bugs": "https://github.com/thanhphong3/wind-ai-assistant/issues",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -22,7 +17,16 @@
     "Programming Languages"
   ],
   "main": "./dist/extension.js",
-  "activationEvents": [],
+  "activationEvents": [
+    "onView:wind-agent.chatView",
+    "onCommand:wind-agent.clearChat",
+    "onCommand:wind-agent.showHistory",
+    "onCommand:wind-agent.showSettings",
+    "onCommand:wind-agent.pinSelectionToChat",
+    "onCommand:wind-agent.inlineEdit",
+    "onCommand:wind-agent.openInBrowser",
+    "onCommand:wind-agent.openConfig"
+  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
