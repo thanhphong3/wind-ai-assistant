@@ -1,0 +1,36 @@
+# Dependency directories
+node_modules/
+
+# Build and compilation outputs
+out/
+dist/
+
+# VS Code test outputs
+.vscode-test/
+
+# Packaging files
+*.vsix
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Sensitive configuration files (containing API keys)
+ai_config.json
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Agent scratch workspace
+.gravity-scratch/
+

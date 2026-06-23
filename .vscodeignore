@@ -1,0 +1,15 @@
+.vscode/**
+.git/**
+.gitignore
+.gitattributes
+tsconfig.json
+webpack.config.js
+package.bat
+src/**
+ai_config.json
+*.vsix
+out/**
+node_modules/**
+package-lock.json
+dist/**/*.map
+dist/**/*.LICENSE.txt

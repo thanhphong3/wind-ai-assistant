@@ -1,0 +1,215 @@
+{
+  "name": "wind-agent",
+  "displayName": "Wind AI",
+  "description": "An autonomous AI coding assistant for developers.",
+  "version": "0.0.1",
+  "publisher": "PhongPham",
+  "icon": "media/icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thanhphong3/wind-ai-assistant.git"
+  },
+  "homepage": "https://github.com/thanhphong3/wind-ai-assistant#readme",
+  "bugs": {
+    "url": "https://github.com/thanhphong3/wind-ai-assistant/issues"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Programming Languages"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gravity-agent-sidebar",
+          "title": "Wind",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "gravity-agent-sidebar": [
+        {
+          "type": "webview",
+          "id": "gravity-agent.chatView",
+          "name": "Wind"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "gravity-agent.clearChat",
+        "title": "New Chat",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gravity-agent.showHistory",
+        "title": "History",
+        "icon": "$(history)"
+      },
+      {
+        "command": "gravity-agent.showSettings",
+        "title": "Settings",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "gravity-agent.pinSelectionToChat",
+        "title": "Pin Selection to Chat"
+      },
+      {
+        "command": "gravity-agent.inlineEdit",
+        "title": "Inline Edit Selection"
+      },
+      {
+        "command": "gravity-agent.openInBrowser",
+        "title": "Open in Browser"
+      },
+      {
+        "command": "gravity-agent.openConfig",
+        "title": "Open Config (ai_config.json)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "gravity-agent.clearChat",
+          "when": "view == gravity-agent.chatView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gravity-agent.showHistory",
+          "when": "view == gravity-agent.chatView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "gravity-agent.showSettings",
+          "when": "view == gravity-agent.chatView",
+          "group": "navigation@3"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "gravity-agent.openInBrowser",
+          "when": "resourceExtname == .html",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "gravity-agent.openInBrowser",
+          "when": "resourceLangId == html",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Wind Settings",
+      "properties": {
+        "gravityAgent.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API Key for the LLM Provider."
+        },
+        "gravityAgent.apiEndpoint": {
+          "type": "string",
+          "default": "https://generativelanguage.googleapis.com/v1beta/openai",
+          "description": "API Endpoint URL (e.g. OpenAI compatible endpoint)."
+        },
+        "gravityAgent.model": {
+          "type": "string",
+          "default": "gemini-3.5-flash",
+          "description": "Model to use for agent interactions."
+        },
+        "gravityAgent.autoExecution": {
+          "type": "string",
+          "default": "Ask for Approval",
+          "enum": [
+            "Ask for Approval",
+            "Always Proceed"
+          ],
+          "description": "Auto Execution Policy for Agent. If 'Always Proceed', commands and file modifications are run without asking for approval."
+        },
+        "gravityAgent.autoExecutePlan": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start executing the plan after generating it."
+        },
+        "gravityAgent.browser": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "chrome",
+            "edge",
+            "firefox"
+          ],
+          "enumDescriptions": [
+            "Auto Detect (Chrome, then Edge, then Firefox)",
+            "Google Chrome",
+            "Microsoft Edge",
+            "Mozilla Firefox"
+          ],
+          "description": "Preferred browser for running web automation and testing."
+        },
+        "gravityAgent.enableInlineCompletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable inline code completions (ghost text) as you type."
+        },
+        "gravityAgent.inlineCompletionModel": {
+          "type": "string",
+          "default": "gemini-3.5-flash",
+          "description": "Select the model specifically used for inline completions."
+        },
+        "gravityAgent.inlineCompletionTimeout": {
+          "type": "integer",
+          "default": 30000,
+          "description": "Timeout in milliseconds for inline code completion requests. Increase this if using slow or local models."
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "gravity-agent.pinSelectionToChat",
+        "key": "ctrl+l",
+        "mac": "cmd+l",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "gravity-agent.inlineEdit",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tsc": "tsc -p ./",
+    "watch-tsc": "tsc -watch -p ./",
+    "vsce-package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.27.0",
+    "ts-loader": "^9.6.2",
+    "typescript": "^5.3.3",
+    "webpack": "^5.107.2",
+    "webpack-cli": "^7.0.3"
+  },
+  "dependencies": {
+    "axios": "^1.6.7",
+    "puppeteer-core": "^22.6.0"
+  }
+}
