@@ -27,82 +27,82 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "gravity-agent-sidebar",
+          "id": "wind-agent-sidebar",
           "title": "Wind",
           "icon": "$(hubot)"
         }
       ]
     },
     "views": {
-      "gravity-agent-sidebar": [
+      "wind-agent-sidebar": [
         {
           "type": "webview",
-          "id": "gravity-agent.chatView",
+          "id": "wind-agent.chatView",
           "name": "Wind"
         }
       ]
     },
     "commands": [
       {
-        "command": "gravity-agent.clearChat",
+        "command": "wind-agent.clearChat",
         "title": "New Chat",
         "icon": "$(add)"
       },
       {
-        "command": "gravity-agent.showHistory",
+        "command": "wind-agent.showHistory",
         "title": "History",
         "icon": "$(history)"
       },
       {
-        "command": "gravity-agent.showSettings",
+        "command": "wind-agent.showSettings",
         "title": "Settings",
         "icon": "$(gear)"
       },
       {
-        "command": "gravity-agent.pinSelectionToChat",
+        "command": "wind-agent.pinSelectionToChat",
         "title": "Pin Selection to Chat"
       },
       {
-        "command": "gravity-agent.inlineEdit",
+        "command": "wind-agent.inlineEdit",
         "title": "Inline Edit Selection"
       },
       {
-        "command": "gravity-agent.openInBrowser",
+        "command": "wind-agent.openInBrowser",
         "title": "Open in Browser"
       },
       {
-        "command": "gravity-agent.openConfig",
+        "command": "wind-agent.openConfig",
         "title": "Open Config (ai_config.json)"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "gravity-agent.clearChat",
-          "when": "view == gravity-agent.chatView",
+          "command": "wind-agent.clearChat",
+          "when": "view == wind-agent.chatView",
           "group": "navigation@1"
         },
         {
-          "command": "gravity-agent.showHistory",
-          "when": "view == gravity-agent.chatView",
+          "command": "wind-agent.showHistory",
+          "when": "view == wind-agent.chatView",
           "group": "navigation@2"
         },
         {
-          "command": "gravity-agent.showSettings",
-          "when": "view == gravity-agent.chatView",
+          "command": "wind-agent.showSettings",
+          "when": "view == wind-agent.chatView",
           "group": "navigation@3"
         }
       ],
       "explorer/context": [
         {
-          "command": "gravity-agent.openInBrowser",
+          "command": "wind-agent.openInBrowser",
           "when": "resourceExtname == .html",
           "group": "navigation"
         }
       ],
       "editor/context": [
         {
-          "command": "gravity-agent.openInBrowser",
+          "command": "wind-agent.openInBrowser",
           "when": "resourceLangId == html",
           "group": "navigation"
         }
@@ -111,22 +111,22 @@
     "configuration": {
       "title": "Wind Settings",
       "properties": {
-        "gravityAgent.apiKey": {
+        "windAgent.apiKey": {
           "type": "string",
           "default": "",
           "description": "API Key for the LLM Provider."
         },
-        "gravityAgent.apiEndpoint": {
+        "windAgent.apiEndpoint": {
           "type": "string",
           "default": "https://generativelanguage.googleapis.com/v1beta/openai",
           "description": "API Endpoint URL (e.g. OpenAI compatible endpoint)."
         },
-        "gravityAgent.model": {
+        "windAgent.model": {
           "type": "string",
           "default": "gemini-3.5-flash",
           "description": "Model to use for agent interactions."
         },
-        "gravityAgent.autoExecution": {
+        "windAgent.autoExecution": {
           "type": "string",
           "default": "Ask for Approval",
           "enum": [
@@ -135,12 +135,12 @@
           ],
           "description": "Auto Execution Policy for Agent. If 'Always Proceed', commands and file modifications are run without asking for approval."
         },
-        "gravityAgent.autoExecutePlan": {
+        "windAgent.autoExecutePlan": {
           "type": "boolean",
           "default": false,
           "description": "Automatically start executing the plan after generating it."
         },
-        "gravityAgent.browser": {
+        "windAgent.browser": {
           "type": "string",
           "default": "auto",
           "enum": [
@@ -157,17 +157,17 @@
           ],
           "description": "Preferred browser for running web automation and testing."
         },
-        "gravityAgent.enableInlineCompletion": {
+        "windAgent.enableInlineCompletion": {
           "type": "boolean",
           "default": true,
           "description": "Enable or disable inline code completions (ghost text) as you type."
         },
-        "gravityAgent.inlineCompletionModel": {
+        "windAgent.inlineCompletionModel": {
           "type": "string",
           "default": "gemini-3.5-flash",
           "description": "Select the model specifically used for inline completions."
         },
-        "gravityAgent.inlineCompletionTimeout": {
+        "windAgent.inlineCompletionTimeout": {
           "type": "integer",
           "default": 30000,
           "description": "Timeout in milliseconds for inline code completion requests. Increase this if using slow or local models."
@@ -176,13 +176,13 @@
     },
     "keybindings": [
       {
-        "command": "gravity-agent.pinSelectionToChat",
+        "command": "wind-agent.pinSelectionToChat",
         "key": "ctrl+l",
         "mac": "cmd+l",
         "when": "editorHasSelection"
       },
       {
-        "command": "gravity-agent.inlineEdit",
+        "command": "wind-agent.inlineEdit",
         "key": "ctrl+i",
         "mac": "cmd+i",
         "when": "editorTextFocus"

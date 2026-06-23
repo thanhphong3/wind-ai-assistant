@@ -16,7 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
     const autocompleteStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     autocompleteStatusBarItem.text = "$(symbol-event) Wind: Ready";
     autocompleteStatusBarItem.tooltip = "Click to show Wind Autocomplete Logs";
-    autocompleteStatusBarItem.command = "gravity-agent.showAutocompleteLogs";
+    autocompleteStatusBarItem.command = "wind-agent.showAutocompleteLogs";
     autocompleteStatusBarItem.show();
     context.subscriptions.push(autocompleteStatusBarItem);
 
@@ -34,7 +34,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register command to display output channel logs
     context.subscriptions.push(
-        vscode.commands.registerCommand('gravity-agent.showAutocompleteLogs', () => {
+        vscode.commands.registerCommand('wind-agent.showAutocompleteLogs', () => {
             autocompleteOutputChannel.show();
         })
     );
@@ -49,16 +49,16 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             }
         ),
-        vscode.commands.registerCommand('gravity-agent.clearChat', () => {
+        vscode.commands.registerCommand('wind-agent.clearChat', () => {
             provider.clearChat();
         }),
-        vscode.commands.registerCommand('gravity-agent.showHistory', () => {
+        vscode.commands.registerCommand('wind-agent.showHistory', () => {
             provider.toggleHistory();
         }),
-        vscode.commands.registerCommand('gravity-agent.showSettings', () => {
+        vscode.commands.registerCommand('wind-agent.showSettings', () => {
             provider.toggleSettings();
         }),
-        vscode.commands.registerCommand('gravity-agent.pinSelectionToChat', () => {
+        vscode.commands.registerCommand('wind-agent.pinSelectionToChat', () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) {
                 return;
@@ -74,7 +74,7 @@ export function activate(context: vscode.ExtensionContext) {
             const languageId = editor.document.languageId;
             provider.pinSelectionToChat(selectedText, filePath, startLine, endLine, languageId);
         }),
-        vscode.commands.registerCommand('gravity-agent.inlineEdit', async () => {
+        vscode.commands.registerCommand('wind-agent.inlineEdit', async () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) {
                 vscode.window.showErrorMessage('No file is currently open.');
@@ -116,10 +116,10 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             });
         }),
-        vscode.commands.registerCommand('gravity-agent.openConfig', async () => {
+        vscode.commands.registerCommand('wind-agent.openConfig', async () => {
             await provider.openConfigFile();
         }),
-        vscode.commands.registerCommand('gravity-agent.openInBrowser', async (uri?: vscode.Uri) => {
+        vscode.commands.registerCommand('wind-agent.openInBrowser', async (uri?: vscode.Uri) => {
             let targetUri = uri;
             if (!targetUri) {
                 const editor = vscode.window.activeTextEditor;
@@ -141,7 +141,7 @@ export function activate(context: vscode.ExtensionContext) {
             { pattern: '**' },
             {
                 async provideInlineCompletionItems(document, position, _context, token) {
-                    const config = vscode.workspace.getConfiguration('gravityAgent');
+                    const config = vscode.workspace.getConfiguration('windAgent');
                     const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') !== false;
                     
                     const timeStr = new Date().toLocaleTimeString();
@@ -226,7 +226,7 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             }
         ),
-        vscode.commands.registerCommand('gravity-agent.fixDiagnostic', async (document: vscode.TextDocument, diagnostic: vscode.Diagnostic, range: vscode.Range) => {
+        vscode.commands.registerCommand('wind-agent.fixDiagnostic', async (document: vscode.TextDocument, diagnostic: vscode.Diagnostic, range: vscode.Range) => {
             await provider.fixDiagnostic(document, diagnostic, range);
         }),
         vscode.languages.registerCodeActionsProvider(
@@ -245,7 +245,7 @@ export function activate(context: vscode.ExtensionContext) {
                             vscode.CodeActionKind.QuickFix
                         );
                         action.command = {
-                            command: 'gravity-agent.fixDiagnostic',
+                            command: 'wind-agent.fixDiagnostic',
                             title: 'Fix with Wind',
                             arguments: [document, diagnostic, diagnostic.range]
                         };

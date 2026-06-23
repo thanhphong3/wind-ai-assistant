@@ -1959,7 +1959,7 @@ export class ToolsManager {
     private async browserOpen(url: string, headless?: boolean): Promise<string> {
         try {
             const isHeadless = headless === undefined ? false : headless;
-            const config = vscode.workspace.getConfiguration('gravityAgent');
+            const config = vscode.workspace.getConfiguration('windAgent');
             const preferredBrowser = config.get<string>('browser') || 'auto';
             const executablePath = await this.detectLocalBrowser(preferredBrowser);
 
@@ -2664,7 +2664,7 @@ Do NOT choose more than one action at a time. Explain your reasoning briefly bef
     private async getEmbedding(text: string, signal?: AbortSignal): Promise<number[]> {
         const keys = Array.isArray(this.apiKey) ? this.apiKey : (this.apiKey ? [this.apiKey] : []);
         if (keys.length === 0) {
-            throw new Error('API Key is not configured. Please configure your apiKey in gravityAgent extension settings.');
+            throw new Error('API Key is not configured. Please configure your apiKey in windAgent extension settings.');
         }
         
         const isGemini = this.endpoint.includes('googleapis.com') || this.endpoint.includes('generativelanguage');

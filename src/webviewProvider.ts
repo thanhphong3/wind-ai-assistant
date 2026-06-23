@@ -87,7 +87,7 @@ interface ScheduledTask {
 }
 
 export class GravityWebviewProvider implements vscode.WebviewViewProvider {
-    public static readonly viewType = 'gravity-agent.chatView';
+    public static readonly viewType = 'wind-agent.chatView';
     private _view?: vscode.WebviewView;
     private _agent?: Agent;
     private _pendingToolResolves = new Map<string, (approved: boolean) => void>();
@@ -242,7 +242,7 @@ export class GravityWebviewProvider implements vscode.WebviewViewProvider {
 
         if (!this._statusBarItem) {
             this._statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-            this._statusBarItem.command = 'gravity-agent.chatView.focus';
+            this._statusBarItem.command = 'wind-agent.chatView.focus';
             this._statusBarItem.tooltip = 'Wind Background Tasks';
             this._context.subscriptions.push(this._statusBarItem);
         }
@@ -541,7 +541,7 @@ export class GravityWebviewProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'webviewReady':
                     await this._loadAndSyncConfig();
-                    const config = vscode.workspace.getConfiguration('gravityAgent');
+                    const config = vscode.workspace.getConfiguration('windAgent');
                     const autoExecution = config.get<string>('autoExecution') || 'Ask for Approval';
                     const autoExecutePlan = config.get<boolean>('autoExecutePlan') || false;
                     const browser = config.get<string>('browser') || 'auto';
@@ -562,7 +562,7 @@ export class GravityWebviewProvider implements vscode.WebviewViewProvider {
                     this._sendPermissionsToWebview();
                     break;
                 case 'getSettings': {
-                    const config = vscode.workspace.getConfiguration('gravityAgent');
+                    const config = vscode.workspace.getConfiguration('windAgent');
                     const autoExecution = config.get<string>('autoExecution') || 'Ask for Approval';
                     const autoExecutePlan = config.get<boolean>('autoExecutePlan') || false;
                     const browser = config.get<string>('browser') || 'auto';
@@ -581,7 +581,7 @@ export class GravityWebviewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'updateSetting': {
-                    const config = vscode.workspace.getConfiguration('gravityAgent');
+                    const config = vscode.workspace.getConfiguration('windAgent');
                     if (data.key === 'autoExecution') {
                         await config.update('autoExecution', data.value, vscode.ConfigurationTarget.Global);
                     } else if (data.key === 'autoExecutePlan') {
@@ -1011,7 +1011,7 @@ export class GravityWebviewProvider implements vscode.WebviewViewProvider {
         model: string;
         configName: string;
     } {
-        const config = vscode.workspace.getConfiguration('gravityAgent');
+        const config = vscode.workspace.getConfiguration('windAgent');
         let rawKey = config.get<string | string[]>('apiKey') || '';
         let endpoint = config.get<string>('apiEndpoint') || 'https://generativelanguage.googleapis.com/v1beta/openai';
         let model = config.get<string>('model') || 'gemini-2.5-flash';
@@ -1167,7 +1167,7 @@ Please output the modified code:`;
     }
 
     public async getInlineCompletion(prefix: string, suffix: string, languageId: string, token?: vscode.CancellationToken): Promise<string> {
-        const config = vscode.workspace.getConfiguration('gravityAgent');
+        const config = vscode.workspace.getConfiguration('windAgent');
         const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') !== false;
         if (!enableInlineCompletion) {
             return '';
@@ -1294,7 +1294,7 @@ GIVE ONLY THE CODE CONTINUATION WITHOUT EXPLAINING OR MARKDOWN WRAPPING:`;
         if (this._view) {
             this._view.show(true);
         } else {
-            await vscode.commands.executeCommand('gravity-agent.chatView.focus');
+            await vscode.commands.executeCommand('wind-agent.chatView.focus');
         }
 
         const relativePath = vscode.workspace.asRelativePath(document.uri);
@@ -1748,7 +1748,7 @@ ${errorCode}
                         console.error('Failed to write implementation_plan.md:', err.message);
                     }
 
-                    const autoExecutePlan = vscode.workspace.getConfiguration('gravityAgent').get<boolean>('autoExecutePlan') || false;
+                    const autoExecutePlan = vscode.workspace.getConfiguration('windAgent').get<boolean>('autoExecutePlan') || false;
                     if (autoExecutePlan && planTasks.length > 0) {
                         setTimeout(() => {
                             this._executePlan(planTasks, selectedModel, configIndex);
@@ -1761,7 +1761,7 @@ ${errorCode}
                     const notifyBtn = 'View';
                     vscode.window.showInformationMessage(`Wind has completed the task in session "${session.title}".`, notifyBtn).then(btn => {
                         if (btn === notifyBtn) {
-                            vscode.commands.executeCommand('gravity-agent.chatView.focus');
+                            vscode.commands.executeCommand('wind-agent.chatView.focus');
                             this._loadSession(session.id);
                         }
                     });
@@ -2206,7 +2206,7 @@ ${errorCode}
         }
 
         // Instantiate Agent if needed to sync the state
-        const config = vscode.workspace.getConfiguration('gravityAgent');
+        const config = vscode.workspace.getConfiguration('windAgent');
         const apiKey = config.get<string>('apiKey') || '';
         const endpoint = config.get<string>('apiEndpoint') || 'https://generativelanguage.googleapis.com/v1beta/openai';
         const model = config.get<string>('model') || 'gemini-2.5-flash';
@@ -2473,7 +2473,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                     const notifyBtn = 'View';
                     vscode.window.showInformationMessage(`Wind has completed execution of the plan in session "${session.title}".`, notifyBtn).then(btn => {
                         if (btn === notifyBtn) {
-                            vscode.commands.executeCommand('gravity-agent.chatView.focus');
+                            vscode.commands.executeCommand('wind-agent.chatView.focus');
                             this._loadSession(sessionId);
                         }
                     });
@@ -2975,7 +2975,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                 // Check whitelist permission
                 const isPermissionGranted = requiredScope ? matchesPermission(requiredScope, this._grantedPermissions) : false;
 
-                const config = vscode.workspace.getConfiguration('gravityAgent');
+                const config = vscode.workspace.getConfiguration('windAgent');
                 const autoExecution = config.get<string>('autoExecution') || 'Ask for Approval';
                 const fastAction = this._context.workspaceState.get<boolean>('fastAction', false);
                 const actualRequiresApproval = isQuestion || (requiresApproval && (autoExecution !== 'Always Proceed') && !fastAction && !isPermissionGranted);

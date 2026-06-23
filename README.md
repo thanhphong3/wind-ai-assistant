@@ -33,17 +33,17 @@ Click on the **Wind AI** icon in the Activity Bar to launch the chat view. Enter
 
 ## Detailed Settings Configuration
 
-Wind AI supports several configuration properties under the `gravityAgent` namespace:
+Wind AI supports several configuration properties under the `windAgent` namespace:
 
 | Setting | Default Value | Description |
 | :--- | :--- | :--- |
-| `gravityAgent.apiKey` | `""` | The API Key for your LLM provider. |
-| `gravityAgent.apiEndpoint` | `https://generativelanguage.googleapis.com/v1beta/openai` | The API endpoint URL (supports OpenAI-compatible schemas). |
-| `gravityAgent.model` | `gemini-3.5-flash` | The model to use for agent interactions. |
-| `gravityAgent.autoExecution` | `Ask for Approval` | Options: `Ask for Approval` or `Always Proceed`. Controls whether the agent must ask before running terminal commands or modifying files. |
-| `gravityAgent.autoExecutePlan`| `false` | Automatically start executing the plan after generating it. |
-| `gravityAgent.browser` | `auto` | Preferred browser for running web automation and testing (`auto`, `chrome`, `edge`, `firefox`). |
-| `gravityAgent.enableInlineCompletion` | `true` | Enable/disable inline code completions (ghost text) as you type. |
+| `windAgent.apiKey` | `""` | The API Key for your LLM provider. |
+| `windAgent.apiEndpoint` | `https://generativelanguage.googleapis.com/v1beta/openai` | The API endpoint URL (supports OpenAI-compatible schemas). |
+| `windAgent.model` | `gemini-3.5-flash` | The model to use for agent interactions. |
+| `windAgent.autoExecution` | `Ask for Approval` | Options: `Ask for Approval` or `Always Proceed`. Controls whether the agent must ask before running terminal commands or modifying files. |
+| `windAgent.autoExecutePlan`| `false` | Automatically start executing the plan after generating it. |
+| `windAgent.browser` | `auto` | Preferred browser for running web automation and testing (`auto`, `chrome`, `edge`, `firefox`). |
+| `windAgent.enableInlineCompletion` | `true` | Enable/disable inline code completions (ghost text) as you type. |
 
 ---
 
