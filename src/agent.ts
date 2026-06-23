@@ -118,7 +118,7 @@ export class Agent {
 
         let nonToolInstructions = '';
         if (isNonToolModel && mode !== 'chat') {
-            nonToolInstructions = `\n\nCRITICAL: Your model does not support native tool calling. To execute tools, you MUST output a JSON block in your response matching this exact format:
+            nonToolInstructions = `\n\nYour model does not support native tool calling. To execute tools, you can output a JSON block in your response matching this format:
 \`\`\`json
 {
   "tool_calls": [
@@ -131,7 +131,7 @@ export class Agent {
   ]
 }
 \`\`\`
-Do NOT wrap the JSON block in other text if you want it to execute immediately. You can explain your thoughts before the JSON block, but ensure the JSON block is valid and conforms to this structure.
+You can explain your thoughts before the JSON block, or just output the JSON block directly. If you have questions for the user, feel free to ask them directly in your response.
 
 Available Tools and Parameters:
 - listFiles: {}
@@ -214,8 +214,9 @@ Planning Guidelines:
 
 Rules:
 1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
-2. Do NOT ask the user to respond or say "ok" to proceed. Continue the execution loop by invoking tools.
+2. If the task is not complete, continue the execution loop by invoking tools. If the task is fully completed, provide your final response and stop.
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
+4. Do not enter an infinite loop of checking or thinking. If you have verified your changes and are done, conclude your response immediately.
 
 Tool Guidelines:
 - listDir: list directories without recursive clutter.
@@ -235,9 +236,10 @@ Your focus is to autonomously achieve the goal, perform rigorous testing and sel
 
 Rules:
 1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation.
-2. Do NOT ask the user to respond or say "ok" to proceed. Continue the execution loop by invoking tools.
+2. If the task is not complete, continue the execution loop by invoking tools. If the task is fully completed, provide your final response and stop.
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-4. Verify your work using automated tests and checks before completing the goal.`;
+4. Verify your work using automated tests and checks before completing the goal.
+5. Do not enter an infinite loop of checking or thinking. If you have verified your changes and are done, conclude your response immediately.`;
         } else if (mode === 'grill') {
             promptText = `You are Wind Agent, an autonomous requirements-alignment and interviewing assistant running in GRILL-ME mode.
 Workspace: ${this.workspaceRoot}
@@ -257,8 +259,9 @@ Workspace: ${this.workspaceRoot}
 
 Rules:
 1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
-2. Do NOT ask the user to respond or say "ok" to proceed. Continue the execution loop by invoking tools.
+2. If the task is not complete, continue the execution loop by invoking tools. If the task is fully completed, provide your final response and stop.
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
+4. Do not enter an infinite loop of checking or thinking. If you have verified your changes and are done, conclude your response immediately.
 
 Tool Guidelines:
 - listDir: list directories without recursive clutter.
@@ -273,8 +276,8 @@ Tool Guidelines:
 
         if (mode !== 'chat') {
             promptText += `\n\nWind Upgrades & Guidelines:
-- Scratch Workspace: For any temporary scripts, debug files, or trial code, you MUST use the \`.wind-scratch/\` directory under workspace root.
-- Interactive Questions: If you encounter design options, requirements ambiguity, or need user decisions, you MUST invoke the \`askQuestion\` tool. Do NOT guess or make unverified assumptions.`;
+- Scratch Workspace: For any temporary scripts, debug files, or trial code, you can use the \`.wind-scratch/\` directory under workspace root.
+- Interactive Questions: If you encounter design options, requirements ambiguity, or need user decisions, you can ask the user directly in your response, or invoke the \`askQuestion\` tool to present options.`;
         }
 
         if (this.fastAction && mode !== 'plan') {
