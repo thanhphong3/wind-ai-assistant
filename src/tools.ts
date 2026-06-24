@@ -2438,7 +2438,7 @@ export class ToolsManager {
                 
                 currentUrl = ToolsManager.page.url();
                 
-                const subagentSystemPrompt = `You are a Browser Subagent tasked with executing a sub-step of a programming agent.
+                 const subagentSystemPrompt = `You are a Browser Subagent tasked with executing a sub-step of a programming agent.
 Your overall goal is to accomplish this task: "${task}".
 You are currently on the page: ${currentUrl}.
  
@@ -2449,6 +2449,7 @@ Available Actions:
 4. Wait: {"action": "wait", "ms": milliseconds}
 5. Success: {"action": "success", "message": "describe what you accomplished"}
 6. Fail: {"action": "fail", "reason": "describe why you could not proceed"}
+7. Do not repeat the exact same action on the same page state. If an action does not change the page or state, try another element/selector or declare failure using the "fail" action.
  
 You MUST output your next action as a valid JSON object matching the action schema above, wrapped in a markdown code block:
 \`\`\`json

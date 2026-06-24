@@ -225,9 +225,9 @@ Planning Guidelines:
 
 Rules:
 1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
-2. If the task is not complete, continue the execution loop by invoking tools. If the task is fully completed, provide your final response and stop.
+2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed or cannot be completed due to an error, provide your final response and stop. Do not make unnecessary or redundant tool calls.
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-4. Do not enter an infinite loop of checking or thinking. If you have verified your changes and are done, conclude your response immediately.
+4. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further actions are possible/needed, conclude your response immediately without invoking any more tools.
 
 Tool Guidelines:
 - listDir: list directories without recursive clutter.
@@ -247,10 +247,10 @@ Your focus is to autonomously achieve the goal, perform rigorous testing and sel
 
 Rules:
 1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation.
-2. If the task is not complete, continue the execution loop by invoking tools. If the task is fully completed, provide your final response and stop.
+2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
 4. Verify your work using automated tests and checks before completing the goal.
-5. Do not enter an infinite loop of checking or thinking. If you have verified your changes and are done, conclude your response immediately.`;
+5. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further progress can be made, conclude your response immediately without invoking any more tools.`;
         } else if (mode === 'grill') {
             promptText = `You are Wind Agent, an autonomous requirements-alignment and interviewing assistant running in GRILL-ME mode.
 Workspace: ${this.workspaceRoot}
@@ -270,9 +270,9 @@ Workspace: ${this.workspaceRoot}
 
 Rules:
 1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
-2. If the task is not complete, continue the execution loop by invoking tools. If the task is fully completed, provide your final response and stop.
+2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-4. Do not enter an infinite loop of checking or thinking. If you have verified your changes and are done, conclude your response immediately.
+4. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further progress can be made, conclude your response immediately without invoking any more tools.
 
 Tool Guidelines:
 - listDir: list directories without recursive clutter.
@@ -811,12 +811,6 @@ ${userQuery}`;
             };
 
             const modelLower = this.model.toLowerCase();
-            const isReasoningModel = modelLower.includes('o1') || modelLower.includes('o3') || modelLower.includes('r1');
-            if (!isReasoningModel) {
-                body.temperature = 0.2;
-                body.frequency_penalty = 0.1;
-                body.presence_penalty = 0.1;
-            }
 
             if (tools && tools.length > 0) {
                 body.tools = tools;
