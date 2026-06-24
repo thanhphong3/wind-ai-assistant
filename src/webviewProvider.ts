@@ -1136,6 +1136,7 @@ Please output the modified code:`;
             try {
                 const res = await axios.post(`${url}/chat/completions`, body, { 
                     headers,
+                    timeout: 30000,
                     signal: abortController?.signal
                 });
 
@@ -3619,7 +3620,7 @@ IMPORTANT rules:
             }
 
             try {
-                const res = await axios.post(`${url}/chat/completions`, body, { headers, signal });
+                const res = await axios.post(`${url}/chat/completions`, body, { headers, timeout: 30000, signal });
 
                 if (res.data && res.data.choices && res.data.choices.length > 0) {
                     if (configName && keys.length > 1) {

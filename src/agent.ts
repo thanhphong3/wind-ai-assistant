@@ -728,12 +728,12 @@ ${userQuery}`;
         const modelsCount = effectiveModels.length;
 
         // Total attempts = keys × models
-        // Strategy: for each key, try all models before moving to the next key
+        // Strategy: for each model, try all keys before moving to the next model
         const totalAttempts = keysCount * modelsCount;
 
         for (let attempt = 0; attempt < totalAttempts; attempt++) {
-            const keyAttempt = Math.floor(attempt / modelsCount);
-            const modelAttempt = attempt % modelsCount;
+            const modelAttempt = Math.floor(attempt / keysCount);
+            const keyAttempt = attempt % keysCount;
 
             const currentKeyIdx = (startKeyIndex + keyAttempt) % keysCount;
             const currentModel = effectiveModels[modelAttempt];
@@ -840,6 +840,7 @@ ${userQuery}`;
 
             let fullContent = '';
             let fullReasoningContent = '';
+            let msgThoughtSignature: any = undefined;
             const activeToolCalls: any = {}; // map of index -> tool_call object
 
             try {
@@ -850,6 +851,7 @@ ${userQuery}`;
                 const res = await axios.post(`${url}/chat/completions`, body, { 
                     headers,
                     responseType: 'stream',
+                    timeout: 30000,
                     signal: this.abortController.signal
                 });
 
@@ -871,6 +873,18 @@ ${userQuery}`;
                         const data = JSON.parse(rawData);
                         if (data && data.choices && data.choices.length > 0) {
                             const delta = data.choices[0].delta;
+                            
+                            // Capture any message-level/delta-level thought signature
+                            if (delta.thought_signature) {
+                                msgThoughtSignature = delta.thought_signature;
+                            } else if (delta.google?.thought_signature) {
+                                msgThoughtSignature = delta.google.thought_signature;
+                            } else if (delta.extra_content?.thought_signature) {
+                                msgThoughtSignature = delta.extra_content.thought_signature;
+                            } else if (delta.extra_content?.google?.thought_signature) {
+                                msgThoughtSignature = delta.extra_content.google.thought_signature;
+                            }
+
                             if (delta.reasoning_content) {
                                 fullReasoningContent += delta.reasoning_content;
                                 if (this.callbacks.onStreamThought) {
@@ -925,6 +939,46 @@ ${userQuery}`;
                                             }
                                         }
                                     }
+
+                                    // Capture thought_signature in any shape or nested form
+                                    if (tc.thought_signature) {
+                                        activeToolCalls[idx].thought_signature = tc.thought_signature;
+                                    }
+                                    if (tc.function?.thought_signature) {
+                                        activeToolCalls[idx].thought_signature = tc.function.thought_signature;
+                                        activeToolCalls[idx].function.thought_signature = tc.function.thought_signature;
+                                    }
+                                    if (tc.provider_specific_fields?.thought_signature) {
+                                        activeToolCalls[idx].thought_signature = tc.provider_specific_fields.thought_signature;
+                                        activeToolCalls[idx].provider_specific_fields = tc.provider_specific_fields;
+                                    }
+                                    if (tc.extra_content?.thought_signature) {
+                                        activeToolCalls[idx].thought_signature = tc.extra_content.thought_signature;
+                                    }
+                                    if (tc.extra_content?.google?.thought_signature) {
+                                        activeToolCalls[idx].thought_signature = tc.extra_content.google.thought_signature;
+                                    }
+
+                                    // General preservation of any other properties on tc
+                                    for (const key of Object.keys(tc)) {
+                                        if (key !== 'index' && key !== 'id' && key !== 'type' && key !== 'function') {
+                                            if ((tc as any)[key] !== undefined) {
+                                                (activeToolCalls[idx] as any)[key] = (tc as any)[key];
+                                            }
+                                        }
+                                    }
+                                    if (tc.function) {
+                                        for (const key of Object.keys(tc.function)) {
+                                            if (key !== 'name' && key !== 'arguments') {
+                                                if ((tc.function as any)[key] !== undefined) {
+                                                    if (!activeToolCalls[idx].function) {
+                                                        activeToolCalls[idx].function = {} as any;
+                                                    }
+                                                    (activeToolCalls[idx].function as any)[key] = (tc.function as any)[key];
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -936,15 +990,26 @@ ${userQuery}`;
 
                 const assistantMessage = await new Promise<any>((resolve, reject) => {
                     let done = false;
+                    let streamTimeout: NodeJS.Timeout | undefined;
+
+                    const resetStreamTimeout = () => {
+                        if (streamTimeout) clearTimeout(streamTimeout);
+                        streamTimeout = setTimeout(() => {
+                            fail(new Error('LLM stream response timed out (no data received for 20 seconds).'));
+                        }, 20000);
+                    };
+
                     const finish = (msg: any) => {
                         if (done) return;
                         done = true;
+                        if (streamTimeout) clearTimeout(streamTimeout);
                         try { res.data.destroy(); } catch (_) {}
                         resolve(msg);
                     };
                     const fail = (err: any) => {
                         if (done) return;
                         done = true;
+                        if (streamTimeout) clearTimeout(streamTimeout);
                         try { res.data.destroy(); } catch (_) {}
                         reject(err);
                     };
@@ -955,12 +1020,15 @@ ${userQuery}`;
                         return;
                     }
 
+                    resetStreamTimeout();
+
                     res.data.on('data', (chunk: Buffer) => {
                         if (done) return;
                         if (this.isCancelled) {
                             fail(new Error('Cancelled by user'));
                             return;
                         }
+                        resetStreamTimeout();
                         try {
                             streamBuffer += decoder.write(chunk);
 
@@ -994,13 +1062,24 @@ ${userQuery}`;
                                         }
                                     }
                                     
-                                    const finalToolCalls = Object.values(activeToolCalls);
+                                    const finalToolCalls = Object.values(activeToolCalls) as any[];
                                     const assistantMsg: any = {
                                         role: 'assistant',
                                         content: cleanContent
                                     };
                                     if (fullReasoningContent) {
                                         assistantMsg.reasoning_content = fullReasoningContent;
+                                    }
+                                    if (msgThoughtSignature) {
+                                        assistantMsg.thought_signature = msgThoughtSignature;
+                                        if (finalToolCalls.length > 0) {
+                                            if (!finalToolCalls[0].thought_signature) {
+                                                finalToolCalls[0].thought_signature = msgThoughtSignature;
+                                            }
+                                            if (finalToolCalls[0].function && !finalToolCalls[0].function.thought_signature) {
+                                                finalToolCalls[0].function.thought_signature = msgThoughtSignature;
+                                            }
+                                        }
                                     }
                                     if (finalToolCalls.length > 0) {
                                         assistantMsg.tool_calls = finalToolCalls;
@@ -1044,13 +1123,24 @@ ${userQuery}`;
                             }
                         }
 
-                        const finalToolCalls = Object.values(activeToolCalls);
+                        const finalToolCalls = Object.values(activeToolCalls) as any[];
                         const assistantMsg: any = {
                             role: 'assistant',
                             content: fullContent
                         };
                         if (fullReasoningContent) {
                             assistantMsg.reasoning_content = fullReasoningContent;
+                        }
+                        if (msgThoughtSignature) {
+                            assistantMsg.thought_signature = msgThoughtSignature;
+                            if (finalToolCalls.length > 0) {
+                                if (!finalToolCalls[0].thought_signature) {
+                                    finalToolCalls[0].thought_signature = msgThoughtSignature;
+                                }
+                                if (finalToolCalls[0].function && !finalToolCalls[0].function.thought_signature) {
+                                    finalToolCalls[0].function.thought_signature = msgThoughtSignature;
+                                }
+                            }
                         }
                         if (finalToolCalls.length > 0) {
                             assistantMsg.tool_calls = finalToolCalls;
@@ -1137,22 +1227,25 @@ ${userQuery}`;
                 // Log smart switching info
                 const nextAttempt = attempt + 1;
                 if (nextAttempt < totalAttempts) {
-                    const nextKeyAttempt = Math.floor(nextAttempt / modelsCount);
-                    const nextModelAttempt = nextAttempt % modelsCount;
+                    const nextModelAttempt = Math.floor(nextAttempt / keysCount);
+                    const nextKeyAttempt = nextAttempt % keysCount;
                     const nextModel = effectiveModels[nextModelAttempt];
                     const nextKeyIdx = (startKeyIndex + nextKeyAttempt) % keysCount;
 
-                    if (nextModelAttempt === 0) {
-                        // Switching to next API key (and cycling back to first model)
-                        this.callbacks.onLog(`[System] Model "${currentModel}" with key[${currentKeyIdx}] encountered an error. Tried all models. Switching to API key[${nextKeyIdx}] and retrying from the beginning of the model list...`);
+                    if (nextKeyAttempt === 0) {
+                        // Switching to next model (and resetting key index back to startKeyIndex)
+                        this.callbacks.onLog(`[System] Model "${currentModel}" encountered errors with all API keys. Switching to next model "${nextModel}" and retrying all keys starting from key[${nextKeyIdx}]...`);
                     } else {
-                        // Switching to next model within same key
-                        this.callbacks.onLog(`[System] Model "${currentModel}" encountered an error: ${errorDetails}. Switching to model "${nextModel}" with the same key[${currentKeyIdx}]...`);
+                        // Switching to next API key within same model
+                        this.callbacks.onLog(`[System] Model "${currentModel}" with key[${currentKeyIdx}] encountered an error: ${errorDetails}. Switching to next API key[${nextKeyIdx}]...`);
                     }
 
                     if (this.callbacks.onModelSwitch) {
                         this.callbacks.onModelSwitch(nextModel, nextKeyIdx);
                     }
+                } else {
+                    // Log the final attempt's error details so it's not lost
+                    this.callbacks.onLog(`[System] Model "${currentModel}" with key[${currentKeyIdx}] encountered a final error: ${errorDetails}. All keys and models have been tried.`);
                 }
             }
         }
@@ -1603,15 +1696,32 @@ function sanitizeMessages(messages: any[]): any[] {
                 // Ensure the tool_call_id exists in the assistant's tool_calls
                 const hasCallId = lastAssistant.tool_calls.some((tc: any) => tc.id === msg.tool_call_id);
                 if (!hasCallId) {
+                    // Find an existing tool call in the same assistant message that contains a thought_signature
+                    const existingTcWithSig = lastAssistant.tool_calls.find((x: any) => x.thought_signature || x.function?.thought_signature);
+                    
                     // Add a mock tool call to match this tool response
-                    lastAssistant.tool_calls.push({
+                    const mockTc: any = {
                         id: msg.tool_call_id,
                         type: 'function',
                         function: {
                             name: msg.name || 'unknown_tool',
                             arguments: '{}'
                         }
-                    });
+                    };
+                    
+                    if (existingTcWithSig) {
+                        if (existingTcWithSig.thought_signature) {
+                            mockTc.thought_signature = existingTcWithSig.thought_signature;
+                        }
+                        if (existingTcWithSig.function?.thought_signature) {
+                            mockTc.function.thought_signature = existingTcWithSig.function.thought_signature;
+                        }
+                    } else if (lastAssistant.thought_signature) {
+                        // Borrow thought_signature from the assistant message itself if available
+                        mockTc.thought_signature = lastAssistant.thought_signature;
+                    }
+                    
+                    lastAssistant.tool_calls.push(mockTc);
                 }
                 sanitized.push(msg);
             } else {
