@@ -2,7 +2,7 @@
   "name": "wind-agent-assistant",
   "displayName": "Wind Agent Coding Assistant",
   "description": "AI coding assistant.",
-  "version": "0.0.4",
+  "version": "0.0.7",
   "publisher": "PhamThanhPhong",
   "icon": "media/icon.png",
   "license": "MIT",

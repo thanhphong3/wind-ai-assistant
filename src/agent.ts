@@ -111,13 +111,35 @@ export class Agent {
         }
     }
 
-    private async getSystemPrompt(mode?: string): Promise<string> {
+    private async getSystemPrompt(mode?: string, forceNonTool?: boolean): Promise<string> {
         const kiContext = await this.loadKnowledgeItems();
         const modelLower = this.model.toLowerCase();
-        const isNonToolModel = modelLower.includes('deepseek') || modelLower.includes('gemma');
+        const isNonToolModel = forceNonTool || modelLower.includes('deepseek') || modelLower.includes('gemma') || modelLower.includes('r1');
 
         let nonToolInstructions = '';
         if (isNonToolModel && mode !== 'chat') {
+            let selectedToolsForInstructions = TOOLS;
+            if (mode === 'plan' || mode === 'grill') {
+                selectedToolsForInstructions = TOOLS.filter(t => 
+                    t.name === 'listFiles' ||
+                    t.name === 'listDir' ||
+                    t.name === 'readFile' ||
+                    t.name === 'grepSearch' ||
+                    t.name === 'searchWeb' ||
+                    t.name === 'searchSemanticCode' ||
+                    t.name === 'searchKnowledgeBase' ||
+                    t.name === 'readKnowledgeItem'
+                );
+            }
+            
+            const toolsListStr = selectedToolsForInstructions.map(t => {
+                const params = Object.entries(t.parameters.properties).map(([name, prop]: [string, any]) => {
+                    const req = t.parameters.required.includes(name) ? 'required' : 'optional';
+                    return `"${name}": ${prop.type} (${req}, ${prop.description || ''})`;
+                }).join(', ');
+                return `- ${t.name}: { ${params} }`;
+            }).join('\n');
+
             nonToolInstructions = `\n\nYour model does not support native tool calling. To execute tools, you can output a JSON block in your response matching this format:
 \`\`\`json
 {
@@ -134,18 +156,7 @@ export class Agent {
 You can explain your thoughts before the JSON block, or just output the JSON block directly. If you have questions for the user, feel free to ask them directly in your response.
 
 Available Tools and Parameters:
-- listFiles: {}
-- listDir: { "relativeDirPath": "string (optional, path relative to workspace root)" }
-- readFile: { "relativeFilePath": "string (required, path relative to workspace root)", "startLine": number (optional), "endLine": number (optional) }
-- writeFile: { "relativeFilePath": "string (required, path relative to workspace root)", "content": "string (required)" }
-- replaceFileContent: { "relativeFilePath": "string (required)", "targetContent": "string (required)", "replacementContent": "string (required)" }
-- multiReplaceFileContent: { "relativeFilePath": "string (required)", "replacements": [ { "targetContent": "string", "replacementContent": "string" } ] }
-- searchWeb: { "query": "string (required)" }
-- grepSearch: { "query": "string (required)", "dirPath": "string (required)", "isRegex": boolean (optional) }
-- runCommand: { "command": "string (required)", "runInBackground": boolean (optional) }
-- getCommandStatus: { "commandId": "string (required)" }
-- sendCommandInput: { "commandId": "string (required)", "input": "string (optional)", "terminate": boolean (optional) }
-- saveKnowledgeItem: { "title": "string (required)", "content": "string (required)" }
+${toolsListStr}
 
 Ensure you use the exact parameter names listed above. For example, to read a file, use:
 \`\`\`json
@@ -421,36 +432,11 @@ ${userQuery}`;
         let loopCount = 0;
         const maxLoops = mode === 'goal' ? 100 : 50; // Safeguard against infinite tool loops
         const toolCallHistory: string[] = [];
+        let accumulatedContent = '';
 
-        // Pre-compute formatted tools once (they don't change within a run)
-        let selectedTools = TOOLS;
         const modelLower = this.model.toLowerCase();
-        const isNonToolModel = modelLower.includes('deepseek') || modelLower.includes('gemma');
-
-        if (isNonToolModel || mode === 'chat') {
-            selectedTools = [];
-        } else if (mode === 'plan' || mode === 'grill') {
-            // Plan and grill modes only allow read-only tools
-            selectedTools = TOOLS.filter(t => 
-                t.name === 'listFiles' ||
-                t.name === 'listDir' ||
-                t.name === 'readFile' ||
-                t.name === 'grepSearch' ||
-                t.name === 'searchWeb' ||
-                t.name === 'searchSemanticCode' ||
-                t.name === 'searchKnowledgeBase' ||
-                t.name === 'readKnowledgeItem'
-            );
-        }
-
-        const formattedTools = selectedTools.map(t => ({
-            type: 'function',
-            function: {
-                name: t.name,
-                description: t.description,
-                parameters: t.parameters
-            }
-        }));
+        const isNonToolModel = modelLower.includes('deepseek') || modelLower.includes('gemma') || modelLower.includes('r1');
+        let forceNonTool = isNonToolModel;
 
         while (loopCount < maxLoops) {
             if (this.isCancelled) {
@@ -458,8 +444,50 @@ ${userQuery}`;
             }
             loopCount++;
 
+            let selectedTools = TOOLS;
+            if (forceNonTool || mode === 'chat') {
+                selectedTools = [];
+            } else if (mode === 'plan' || mode === 'grill') {
+                // Plan and grill modes only allow read-only tools
+                selectedTools = TOOLS.filter(t => 
+                    t.name === 'listFiles' ||
+                    t.name === 'listDir' ||
+                    t.name === 'readFile' ||
+                    t.name === 'grepSearch' ||
+                    t.name === 'searchWeb' ||
+                    t.name === 'searchSemanticCode' ||
+                    t.name === 'searchKnowledgeBase' ||
+                    t.name === 'readKnowledgeItem'
+                );
+            }
+
+            const formattedTools = selectedTools.map(t => ({
+                type: 'function',
+                function: {
+                    name: t.name,
+                    description: t.description,
+                    parameters: t.parameters
+                }
+            }));
+
             // Call LLM using streaming approach
-            let assistantMessage = await this.callLLMStream(formattedTools);
+            let assistantMessage;
+            try {
+                assistantMessage = await this.callLLMStream(formattedTools);
+            } catch (err: any) {
+                if (!forceNonTool && formattedTools.length > 0 && isToolUnsupportedError(err.message)) {
+                    this.callbacks.onLog('[System] Tool calling not supported by the model/endpoint. Retrying with text-based tool fallback...');
+                    forceNonTool = true;
+                    const newPrompt = await this.getSystemPrompt(mode, true);
+                    if (this.messages[0] && this.messages[0].role === 'system') {
+                        this.messages[0].content = newPrompt;
+                    }
+                    loopCount--; // don't count this failed attempt as a loop
+                    continue;
+                } else {
+                    throw err;
+                }
+            }
 
             // Safety net: if the model was expected to support tools but returned empty response (null),
             // it likely doesn't support tool calling on the current endpoint/server setup. Retry without tools.
@@ -467,7 +495,12 @@ ${userQuery}`;
                 (!assistantMessage.content || assistantMessage.content.trim() === '') && 
                 (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
                 
-                this.callbacks.onLog('[System] Selected model may not support tool calling. Retrying without tools...');
+                this.callbacks.onLog('[System] Selected model may not support tool calling. Retrying with text-based tool fallback...');
+                forceNonTool = true;
+                const newPrompt = await this.getSystemPrompt(mode, true);
+                if (this.messages[0] && this.messages[0].role === 'system') {
+                    this.messages[0].content = newPrompt;
+                }
                 assistantMessage = await this.callLLMStream([]);
             }
 
@@ -485,10 +518,23 @@ ${userQuery}`;
             // Store assistant's response in history
             this.messages.push(assistantMessage);
 
+            if (assistantMessage.content) {
+                const trimmed = assistantMessage.content.trim();
+                if (trimmed) {
+                    if (accumulatedContent) {
+                        if (!accumulatedContent.includes(trimmed)) {
+                            accumulatedContent += '\n\n' + trimmed;
+                        }
+                    } else {
+                        accumulatedContent = trimmed;
+                    }
+                }
+            }
+
             const toolCalls = assistantMessage.tool_calls;
             if (!toolCalls || toolCalls.length === 0) {
                 // No more tools requested, we are done
-                return assistantMessage.content || 'Task completed.';
+                return accumulatedContent || 'Task completed.';
             }
 
             // Print intermediate text content if present (already streamed to UI, but good to log)
@@ -512,35 +558,41 @@ ${userQuery}`;
                 
                 let toolArgs: any = {};
                 let toolArgsParseFailed = false;
+                const rawArgs = toolCall.function.arguments || '{}';
                 try {
-                    toolArgs = JSON.parse(toolCall.function.arguments || '{}');
+                    try {
+                        toolArgs = JSON.parse(rawArgs);
+                    } catch (e) {
+                        toolArgs = parsePartialJSON(rawArgs);
+                        if (Object.keys(toolArgs).length === 0 && rawArgs.trim() !== '{}' && rawArgs.trim() !== '' && rawArgs.trim() !== '""') {
+                            throw e;
+                        }
+                    }
                 } catch (e: any) {
                     toolArgsParseFailed = true;
                     this.callbacks.onLog(`[System] Warning: Failed to parse tool arguments for ${toolName}: ${e.message}`);
                 }
 
-                const toolSignature = `${toolName}:${JSON.stringify(toolArgs)}`;
-                if (!toolArgsParseFailed) {
-                    // Check for consecutive identical calls (for any tool, e.g., readFile, runCommand)
-                    const len = toolCallHistory.length;
-                    if (len >= 2 && toolCallHistory[len - 1] === toolSignature && toolCallHistory[len - 2] === toolSignature) {
-                        const warnMsg = `⚠️ Warning: Infinite loop prevented. Tool "${toolName}" was called consecutively 3 times with identical arguments.`;
-                        this.callbacks.onLog(warnMsg);
-                        return { earlyExit: true, message: warnMsg };
-                    }
-
-                    // Check for overall identical calls of modifying tools
-                    const MODIFYING_TOOLS = new Set(['writeFile', 'replaceFileContent', 'multiReplaceFileContent']);
-                    if (MODIFYING_TOOLS.has(toolName)) {
-                        const occurrences = toolCallHistory.filter(sig => sig === toolSignature).length;
-                        if (occurrences >= 2) {
-                            const warnMsg = `⚠️ Warning: Infinite loop prevented. The tool "${toolName}" was called with the exact same arguments 3 times.`;
-                            this.callbacks.onLog(warnMsg);
-                            return { earlyExit: true, message: warnMsg };
-                        }
-                    }
-                    toolCallHistory.push(toolSignature);
+                const toolSignature = `${toolName}:${rawArgs.trim()}`;
+                
+                // Check for consecutive identical calls (for any tool)
+                const len = toolCallHistory.length;
+                if (len >= 2 && toolCallHistory[len - 1] === toolSignature && toolCallHistory[len - 2] === toolSignature) {
+                    const warnMsg = `⚠️ Warning: Infinite loop prevented. Tool "${toolName}" was called consecutively 3 times with identical arguments.`;
+                    this.callbacks.onLog(warnMsg);
+                    return { earlyExit: true, message: warnMsg };
                 }
+
+                // Check for overall identical calls of tools
+                const MODIFYING_TOOLS = new Set(['writeFile', 'replaceFileContent', 'multiReplaceFileContent']);
+                const limit = MODIFYING_TOOLS.has(toolName) ? 2 : 3;
+                const occurrences = toolCallHistory.filter(sig => sig === toolSignature).length;
+                if (occurrences >= limit) {
+                    const warnMsg = `⚠️ Warning: Infinite loop prevented. The tool "${toolName}" was called with the exact same arguments ${limit + 1} times.`;
+                    this.callbacks.onLog(warnMsg);
+                    return { earlyExit: true, message: warnMsg };
+                }
+                toolCallHistory.push(toolSignature);
 
                 // Decide if tool execution requires explicit user approval
                 const requiresApproval = toolName === 'runCommand' || toolName === 'runTerminalCommand' || toolName === 'sendCommandInput' || toolName === 'writeFile' || toolName === 'replaceFileContent' || toolName === 'multiReplaceFileContent';
@@ -758,14 +810,20 @@ ${userQuery}`;
                 stream: true
             };
 
+            const modelLower = this.model.toLowerCase();
+            const isReasoningModel = modelLower.includes('o1') || modelLower.includes('o3') || modelLower.includes('r1');
+            if (!isReasoningModel) {
+                body.temperature = 0.2;
+                body.frequency_penalty = 0.1;
+                body.presence_penalty = 0.1;
+            }
+
             if (tools && tools.length > 0) {
                 body.tools = tools;
                 body.tool_choice = 'auto';
             }
 
             const isGoogle = url.includes('googleapis.com');
-
-            const modelLower = this.model.toLowerCase();
             if (isGoogle) {
                 if (modelLower.includes('gemini') && (modelLower.includes('2.5') || modelLower.includes('3.5') || modelLower.includes('3.'))) {
                     body.reasoning_effort = "medium";
@@ -840,6 +898,9 @@ ${userQuery}`;
                                 if (this.callbacks.onStreamChunk) {
                                     this.callbacks.onStreamChunk(delta.content);
                                 }
+                                if (detectRepetitiveLoop(fullContent)) {
+                                    return true;
+                                }
                             }
                             if (delta.tool_calls) {
                                 for (const tc of delta.tool_calls) {
@@ -876,6 +937,7 @@ ${userQuery}`;
                     } catch (_e) {
                         // Ignore JSON parse errors for incomplete chunks
                     }
+                    return false;
                 };
 
                 const assistantMessage = await new Promise<any>((resolve, reject) => {
@@ -920,7 +982,38 @@ ${userQuery}`;
                             while ((eolIdx = streamBuffer.indexOf('\n', bufferOffset)) !== -1) {
                                 const line = streamBuffer.substring(bufferOffset, eolIdx).trim();
                                 bufferOffset = eolIdx + 1;
-                                processSSELine(line);
+                                const shouldFinish = processSSELine(line);
+                                if (shouldFinish) {
+                                    this.callbacks.onLog('⚠️ Warning: Stream repetition loop detected. Stopping stream...');
+                                    
+                                    // Trim the repeated suffix from fullContent to keep the text clean!
+                                    let cleanContent = fullContent;
+                                    const len = fullContent.length;
+                                    const maxL = Math.floor(len / 3);
+                                    for (let L = 15; L <= maxL; L++) {
+                                        const chunk1 = fullContent.substring(len - L);
+                                        const chunk2 = fullContent.substring(len - 2 * L, len - L);
+                                        const chunk3 = fullContent.substring(len - 3 * L, len - 2 * L);
+                                        if (chunk1 === chunk2 && chunk2 === chunk3) {
+                                            cleanContent = fullContent.substring(0, len - 2 * L);
+                                            break;
+                                        }
+                                    }
+                                    
+                                    const finalToolCalls = Object.values(activeToolCalls);
+                                    const assistantMsg: any = {
+                                        role: 'assistant',
+                                        content: cleanContent
+                                    };
+                                    if (fullReasoningContent) {
+                                        assistantMsg.reasoning_content = fullReasoningContent;
+                                    }
+                                    if (finalToolCalls.length > 0) {
+                                        assistantMsg.tool_calls = finalToolCalls;
+                                    }
+                                    finish(assistantMsg);
+                                    return;
+                                }
                             }
                             if (bufferOffset > 0) {
                                 streamBuffer = streamBuffer.substring(bufferOffset);
@@ -1042,6 +1135,10 @@ ${userQuery}`;
                 }
                 
                 lastError = new Error(`LLM API Call failed: ${errorDetails}`);
+
+                if (isToolUnsupportedError(errorDetails)) {
+                    throw lastError;
+                }
 
                 // Log smart switching info
                 const nextAttempt = attempt + 1;
@@ -1288,91 +1385,134 @@ function parseResilientJSON(text: string, startIdx: number = 0): { obj: any; end
     return { obj: result, endIdx: i };
 }
 
+function isToolUnsupportedError(errorStr: string): boolean {
+    const lower = errorStr.toLowerCase();
+    return lower.includes('tools') || 
+           lower.includes('tool_choice') || 
+           lower.includes('functions') || 
+           lower.includes('unsupported parameter') ||
+           lower.includes('unrecognized parameter') ||
+           lower.includes('extra fields') ||
+           lower.includes('invalid') ||
+           lower.includes('400') ||
+           lower.includes('bad request');
+}
+
 function extractToolCallsFromText(text: string): any[] {
     const toolCalls: any[] = [];
-    const regex = /\{\s*"tool_calls?"/g;
-    let match;
-
-    while ((match = regex.exec(text)) !== null) {
-        const startIdx = match.index;
+    const VALID_TOOL_NAMES = new Set(TOOLS.map(t => t.name));
+    
+    let idx = 0;
+    while (true) {
+        const startIdx = text.indexOf('{', idx);
+        if (startIdx === -1) {
+            break;
+        }
+        
         try {
             const { obj, endIdx } = parseResilientJSON(text, startIdx);
-            if (obj) {
+            if (obj && typeof obj === 'object') {
                 let added = false;
-                if (obj.tool_call && typeof obj.tool_call.name === 'string') {
-                    const toolId = obj.tool_call.id || `call_${Math.random().toString(36).substring(2, 11)}`;
-                    toolCalls.push({
-                        id: toolId,
-                        type: 'function',
-                        function: {
-                            name: obj.tool_call.name,
-                            arguments: typeof obj.tool_call.arguments === 'string' 
-                                ? obj.tool_call.arguments 
-                                : JSON.stringify(obj.tool_call.arguments || {})
-                        }
-                    });
-                    added = true;
-                } else if (Array.isArray(obj.tool_calls)) {
+                
+                // Case 1: {"tool_calls": [...]}
+                if (Array.isArray(obj.tool_calls)) {
                     for (const tc of obj.tool_calls) {
-                        if (tc && typeof tc.name === 'string') {
+                        if (tc && typeof tc.name === 'string' && VALID_TOOL_NAMES.has(tc.name)) {
                             const toolId = tc.id || `call_${Math.random().toString(36).substring(2, 11)}`;
                             toolCalls.push({
                                 id: toolId,
                                 type: 'function',
                                 function: {
                                     name: tc.name,
-                                    arguments: typeof tc.arguments === 'string' 
-                                        ? tc.arguments 
+                                    arguments: typeof tc.arguments === 'string'
+                                        ? tc.arguments
                                         : JSON.stringify(tc.arguments || {})
                                 }
                             });
+                            added = true;
                         }
                     }
-                    added = true;
-                } else if (obj.tool_calls && typeof obj.tool_calls.name === 'string') {
-                    const toolId = obj.tool_calls.id || `call_${Math.random().toString(36).substring(2, 11)}`;
+                }
+                // Case 2: {"tool_call": {...}}
+                else if (obj.tool_call && typeof obj.tool_call === 'object' && typeof obj.tool_call.name === 'string' && VALID_TOOL_NAMES.has(obj.tool_call.name)) {
+                    const tc = obj.tool_call;
+                    const toolId = tc.id || `call_${Math.random().toString(36).substring(2, 11)}`;
                     toolCalls.push({
                         id: toolId,
                         type: 'function',
                         function: {
-                            name: obj.tool_calls.name,
-                            arguments: typeof obj.tool_calls.arguments === 'string' 
-                                ? obj.tool_calls.arguments 
-                                : JSON.stringify(obj.tool_calls.arguments || {})
+                            name: tc.name,
+                            arguments: typeof tc.arguments === 'string'
+                                ? tc.arguments
+                                : JSON.stringify(tc.arguments || {})
                         }
                     });
                     added = true;
                 }
+                // Case 3: Direct {"name": "...", "arguments": {...}}
+                else if (typeof obj.name === 'string' && VALID_TOOL_NAMES.has(obj.name)) {
+                    const toolId = obj.id || `call_${Math.random().toString(36).substring(2, 11)}`;
+                    toolCalls.push({
+                        id: toolId,
+                        type: 'function',
+                        function: {
+                            name: obj.name,
+                            arguments: typeof obj.arguments === 'string'
+                                ? obj.arguments
+                                : JSON.stringify(obj.arguments || {})
+                        }
+                    });
+                    added = true;
+                }
+                
                 if (added) {
-                    regex.lastIndex = endIdx;
+                    idx = endIdx;
+                    continue;
                 }
             }
         } catch (e) {
-            regex.lastIndex = startIdx + 1;
+            // Ignore and move past the '{'
         }
+        idx = startIdx + 1;
     }
     return toolCalls;
 }
 
 function cleanToolCallsFromText(text: string): string {
     let cleanContent = text;
-    const regex = /\{\s*"tool_calls?"/g;
-    let match;
+    const VALID_TOOL_NAMES = new Set(TOOLS.map(t => t.name));
     const rangesToRemove: { start: number; end: number }[] = [];
 
-    while ((match = regex.exec(cleanContent)) !== null) {
-        const startIdx = match.index;
+    let idx = 0;
+    while (true) {
+        const startIdx = cleanContent.indexOf('{', idx);
+        if (startIdx === -1) {
+            break;
+        }
+
         try {
             const { obj, endIdx } = parseResilientJSON(cleanContent, startIdx);
-            if (obj && (obj.tool_call || obj.tool_calls)) {
-                rangesToRemove.push({ start: startIdx, end: endIdx });
-                regex.lastIndex = endIdx;
-            } else {
-                regex.lastIndex = startIdx + 1;
+            if (obj && typeof obj === 'object') {
+                let matched = false;
+                
+                if (Array.isArray(obj.tool_calls)) {
+                    matched = obj.tool_calls.some((tc: any) => tc && typeof tc.name === 'string' && VALID_TOOL_NAMES.has(tc.name));
+                } else if (obj.tool_call && typeof obj.tool_call === 'object' && typeof obj.tool_call.name === 'string' && VALID_TOOL_NAMES.has(obj.tool_call.name)) {
+                    matched = true;
+                } else if (typeof obj.name === 'string' && VALID_TOOL_NAMES.has(obj.name)) {
+                    matched = true;
+                }
+
+                if (matched) {
+                    rangesToRemove.push({ start: startIdx, end: endIdx });
+                    idx = endIdx;
+                    continue;
+                }
             }
         } catch (e) {
-            regex.lastIndex = startIdx + 1;
+            // Ignore
         }
+        idx = startIdx + 1;
     }
 
     for (let i = rangesToRemove.length - 1; i >= 0; i--) {
@@ -1537,4 +1677,19 @@ function sanitizeMessages(messages: any[]): any[] {
     }
 
     return finalMessages;
+}
+
+function detectRepetitiveLoop(text: string): boolean {
+    const len = text.length;
+    if (len < 45) return false;
+    const maxL = Math.floor(len / 3);
+    for (let L = 15; L <= maxL; L++) {
+        const chunk1 = text.substring(len - L);
+        const chunk2 = text.substring(len - 2 * L, len - L);
+        const chunk3 = text.substring(len - 3 * L, len - 2 * L);
+        if (chunk1 === chunk2 && chunk2 === chunk3) {
+            return true;
+        }
+    }
+    return false;
 }
