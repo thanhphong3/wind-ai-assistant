@@ -356,6 +356,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
             
             const isIgnored = (fsPath: string) => {
                 const normalized = fsPath.replace(/\\/g, '/');
+                if (normalized.endsWith('.prompt')) return false;
                 return normalized.includes('/node_modules/') ||
                        normalized.includes('/.git/') ||
                        normalized.includes('/out/') ||
@@ -375,6 +376,9 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
             };
 
             this._generalFileWatcher.onDidCreate(async (uri) => {
+                if (uri.fsPath.endsWith('.prompt')) {
+                    this._syncSlashCommandsToWebview();
+                }
                 if (!isIgnored(uri.fsPath)) {
                     try {
                         const stat = await fs.promises.stat(uri.fsPath);
@@ -401,6 +405,9 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                 }
             });
             this._generalFileWatcher.onDidDelete((uri) => {
+                if (uri.fsPath.endsWith('.prompt')) {
+                    this._syncSlashCommandsToWebview();
+                }
                 if (!isIgnored(uri.fsPath)) {
                     const relPath = vscode.workspace.asRelativePath(uri).replace(/\\/g, '/');
                     if (this._cachedWorkspaceFiles) {
@@ -560,6 +567,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                     await this._syncModifiedFilesFromBackup();
                     await this._sendWorkspaceFiles();
                     this._sendPermissionsToWebview();
+                    await this._syncSlashCommandsToWebview();
                     break;
                 case 'getSettings': {
                     const config = vscode.workspace.getConfiguration('windAgent');
@@ -933,6 +941,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
 
                 case 'refreshModels':
                     await this._loadAndSyncConfig();
+                    await this._syncSlashCommandsToWebview();
                     break;
 
                 case 'showError':
@@ -1626,12 +1635,10 @@ ${errorCode}
             this._currentThreadTitle = 'Thinking';
         }
 
-        let agentPrompt = queryText;
+        let contextBlock = '';
         if (contextItems && contextItems.length > 0) {
-            agentPrompt += "\n\nAttached Context:";
             for (const item of contextItems) {
                 if (item.type === 'file') {
-                    agentPrompt += `\n\nFile: ${item.filePath}`;
                     let fileContent = item.text;
                     if (!fileContent) {
                         try {
@@ -1646,19 +1653,22 @@ ${errorCode}
                             console.error(`Failed to read file ${item.filePath}:`, err.message);
                         }
                     }
+                    contextBlock += `File: ${item.filePath}\n`;
                     if (fileContent) {
-                        agentPrompt += `\n\`\`\`${item.languageId || ''}\n${fileContent}\n\`\`\``;
+                        contextBlock += `\`\`\`${item.languageId || ''}\n${fileContent}\n\`\`\`\n\n`;
                     }
                 } else if (item.type === 'selection') {
-                    agentPrompt += `\n\nFile Selection: ${item.filePath}:${item.startLine}-${item.endLine}`;
+                    contextBlock += `File Selection: ${item.filePath}:${item.startLine}-${item.endLine}\n`;
                     if (item.text) {
-                        agentPrompt += `\n\`\`\`${item.languageId || ''}\n${item.text}\n\`\`\``;
+                        contextBlock += `\`\`\`${item.languageId || ''}\n${item.text}\n\`\`\`\n\n`;
                     }
                 } else if (item.type === 'static') {
-                    agentPrompt += `\n\nMention Directive: @${item.name}`;
+                    contextBlock += `Mention Directive: @${item.name}\n\n`;
                 }
             }
         }
+
+        let agentPrompt = contextBlock ? `${contextBlock.trim()}\n\n${queryText}` : queryText;
 
         (async () => {
             try {
@@ -2899,6 +2909,56 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
         }
 
         this._view?.webview.postMessage({ type: 'modifiedFiles', files: filesList });
+    }
+
+    private async _syncSlashCommandsToWebview() {
+        if (!this._view) return;
+        
+        const commands = [
+            {
+                name: '/goal',
+                description: 'Autonomously execute a long-running goal',
+                icon: '🎯'
+            },
+            {
+                name: '/schedule',
+                description: 'Schedule task (e.g. "task" in 10s or every 5m)',
+                icon: '⏰'
+            },
+            {
+                name: '/grill-me',
+                description: 'Interactive requirement alignment interview',
+                icon: '💬'
+            },
+            {
+                name: '/test-loop',
+                description: 'Auto-run test command and fix files on error',
+                icon: '🔄'
+            }
+        ];
+
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0) {
+            const workspaceRoot = workspaceFolders[0].uri.fsPath;
+            const tempAgent = this._agent || new Agent('', '', '', workspaceRoot, this._getAgentCallbacks('temp'));
+            try {
+                const customPrompts = await tempAgent.getAllCustomPrompts();
+                for (const p of customPrompts) {
+                    commands.push({
+                        name: p.name,
+                        description: p.description,
+                        icon: '📝'
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to get custom prompts:', e);
+            }
+        }
+
+        this._view.webview.postMessage({
+            type: 'updateSlashCommands',
+            commands
+        });
     }
 
     private _getAgentCallbacks(sessionId: string) {

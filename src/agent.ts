@@ -4,6 +4,9 @@ import { TOOLS, ToolsManager } from './tools';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as vscode from 'vscode';
+import { exec } from 'child_process';
+
 
 export interface AgentCallbacks {
     onLog: (text: string) => void;
@@ -79,6 +82,351 @@ export class Agent {
         return this.keys[this.currentKeyIndex];
     }
 
+    public async getAllCustomPrompts(): Promise<{ name: string; description: string }[]> {
+        const checkDirs = [
+            path.join(this.workspaceRoot, '.vscode', 'prompts'),
+            path.join(this.workspaceRoot, '.wind', 'prompts'),
+            path.join(this.workspaceRoot, '.continue', 'prompts'),
+            path.join(os.homedir(), '.wind-agent', 'prompts'),
+            path.join(os.homedir(), '.continue', 'prompts'),
+        ];
+        
+        const prompts: { name: string; description: string }[] = [];
+        const seenNames = new Set<string>();
+
+        for (const dir of checkDirs) {
+            try {
+                const exists = await fs.promises.access(dir).then(() => true).catch(() => false);
+                if (!exists) continue;
+                const files = await fs.promises.readdir(dir);
+                for (const file of files) {
+                    if (file.endsWith('.prompt')) {
+                        const promptName = file.substring(0, file.length - '.prompt'.length);
+                        if (seenNames.has(promptName)) continue;
+                        seenNames.add(promptName);
+                        
+                        try {
+                            const content = await fs.promises.readFile(path.join(dir, file), 'utf8');
+                            const parsed = this.parsePromptFile(content, promptName);
+                            prompts.push({
+                                name: '/' + promptName,
+                                description: parsed.description || `Custom prompt file ${file}`
+                            });
+                        } catch (e) {
+                            prompts.push({
+                                name: '/' + promptName,
+                                description: `Custom prompt file ${file}`
+                            });
+                        }
+                    }
+                }
+            } catch {}
+        }
+        
+        return prompts;
+    }
+
+    private async findPromptFile(name: string): Promise<string | undefined> {
+        const checkDirs = [
+            path.join(this.workspaceRoot, '.vscode', 'prompts'),
+            path.join(this.workspaceRoot, '.wind', 'prompts'),
+            path.join(this.workspaceRoot, '.continue', 'prompts'),
+            path.join(os.homedir(), '.wind-agent', 'prompts'),
+            path.join(os.homedir(), '.continue', 'prompts'),
+        ];
+        
+        for (const dir of checkDirs) {
+            const filePath = path.join(dir, `${name}.prompt`);
+            try {
+                await fs.promises.access(filePath);
+                return filePath;
+            } catch {}
+        }
+        return undefined;
+    }
+
+    private parsePromptFile(content: string, defaultName: string): { name: string; description?: string; systemPrompt?: string; promptBody: string } {
+        let preambleRaw = '';
+        let promptBody = '';
+        
+        const separatorIdx = content.indexOf('\n---\n');
+        if (separatorIdx !== -1) {
+            preambleRaw = content.substring(0, separatorIdx).trim();
+            promptBody = content.substring(separatorIdx + 5).trim();
+        } else {
+            promptBody = content.trim();
+        }
+        
+        let name = defaultName;
+        let description = '';
+        let systemPrompt: string | undefined = undefined;
+        
+        if (preambleRaw) {
+            const lines = preambleRaw.split('\n');
+            for (const line of lines) {
+                const colonIdx = line.indexOf(':');
+                if (colonIdx !== -1) {
+                    const key = line.substring(0, colonIdx).trim().toLowerCase();
+                    const val = line.substring(colonIdx + 1).trim();
+                    if (key === 'name') {
+                        name = val;
+                    } else if (key === 'description') {
+                        description = val;
+                    } else if (key === 'systemprompt' || key === 'systemmessage' || key === 'overridesystemmessage') {
+                        systemPrompt = val;
+                    }
+                }
+            }
+        }
+        
+        if (promptBody.includes('<system>')) {
+            const startTag = promptBody.indexOf('<system>');
+            const endTag = promptBody.indexOf('</system>');
+            if (endTag !== -1 && endTag > startTag) {
+                systemPrompt = promptBody.substring(startTag + 8, endTag).trim();
+                promptBody = promptBody.substring(endTag + 9).trim();
+            }
+        }
+        
+        return { name, description, systemPrompt, promptBody };
+    }
+
+    private async getActiveEditorContent(): Promise<{ fileName: string; content: string; languageId?: string } | undefined> {
+        try {
+            const activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor && activeEditor.document) {
+                const doc = activeEditor.document;
+                const fileName = path.basename(doc.fileName);
+                const content = doc.getText();
+                const languageId = doc.languageId;
+                return { fileName, content, languageId };
+            }
+        } catch (e) {
+            console.error('Failed to get active editor content:', e);
+        }
+        return undefined;
+    }
+
+    private async getActiveEditorFilePath(): Promise<string | undefined> {
+        try {
+            const activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor && activeEditor.document) {
+                return activeEditor.document.fileName;
+            }
+        } catch {}
+        return undefined;
+    }
+
+    private async getGitDiffContent(): Promise<string | undefined> {
+        return new Promise<string | undefined>((resolve) => {
+            exec('git diff', { cwd: this.workspaceRoot }, (error, stdout) => {
+                if (error) {
+                    resolve(undefined);
+                } else {
+                    resolve(stdout.trim() || undefined);
+                }
+            });
+        });
+    }
+
+    private async loadRules(): Promise<{ name: string; instruction: string; globs?: string }[]> {
+        const checkDirs = [
+            path.join(this.workspaceRoot, '.vscode', 'wind-rules'),
+            path.join(this.workspaceRoot, '.wind', 'rules'),
+            path.join(this.workspaceRoot, '.continue', 'rules'),
+            path.join(os.homedir(), '.wind-agent', 'rules'),
+            path.join(os.homedir(), '.continue', 'rules'),
+        ];
+        
+        const rules: { name: string; instruction: string; globs?: string }[] = [];
+        
+        for (const dir of checkDirs) {
+            try {
+                const exists = await fs.promises.access(dir).then(() => true).catch(() => false);
+                if (!exists) continue;
+                const files = await fs.promises.readdir(dir);
+                for (const file of files) {
+                    if (file.endsWith('.md')) {
+                        const filePath = path.join(dir, file);
+                        const content = await fs.promises.readFile(filePath, 'utf8');
+                        
+                        let globs: string | undefined = undefined;
+                        let instruction = content;
+                        
+                        if (content.startsWith('---')) {
+                            const secondDash = content.indexOf('---', 3);
+                            if (secondDash !== -1) {
+                                const frontmatter = content.substring(3, secondDash).trim();
+                                instruction = content.substring(secondDash + 3).trim();
+                                
+                                const lines = frontmatter.split('\n');
+                                for (const line of lines) {
+                                    const colonIdx = line.indexOf(':');
+                                    if (colonIdx !== -1) {
+                                        const key = line.substring(0, colonIdx).trim().toLowerCase();
+                                        const val = line.substring(colonIdx + 1).trim();
+                                        if (key === 'globs' || key === 'glob') {
+                                            globs = val.replace(/['"]/g, '');
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        rules.push({
+                            name: file.substring(0, file.length - 3),
+                            instruction,
+                            globs
+                        });
+                    }
+                }
+            } catch {}
+        }
+        
+        return rules;
+    }
+
+    private matchRules(rules: { name: string; instruction: string; globs?: string }[], activeFiles: string[]): { name: string; instruction: string }[] {
+        const matched: { name: string; instruction: string }[] = [];
+        
+        for (const rule of rules) {
+            if (!rule.globs) {
+                matched.push(rule);
+                continue;
+            }
+            
+            const hasMatch = activeFiles.some(file => this.matchesGlobPattern(file, rule.globs!));
+            if (hasMatch) {
+                matched.push(rule);
+            }
+        }
+        
+        return matched;
+    }
+
+    private matchesGlobPattern(filePath: string, glob: string): boolean {
+        try {
+            const normalizedPath = filePath.replace(/\\/g, '/');
+            const normalizedGlob = glob.replace(/\\/g, '/');
+            
+            const escaped = normalizedGlob.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+            const regexStr = '^' + escaped.replace(/\*/g, '.*').replace(/\?/g, '.') + '$';
+            const regex = new RegExp(regexStr, 'i');
+            
+            if (regex.test(normalizedPath)) return true;
+            
+            const basename = path.basename(normalizedPath);
+            if (new RegExp('^' + escaped.replace(/\*/g, '.*') + '$', 'i').test(basename)) return true;
+            
+            if (glob.includes('**/')) {
+                const parts = glob.split('**/');
+                if (parts.length === 2) {
+                    const prefix = parts[0].replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+                    const suffix = parts[1].replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+                    const doubleStarRegex = new RegExp('^' + prefix + '.*' + suffix + '$', 'i');
+                    return doubleStarRegex.test(normalizedPath);
+                }
+            }
+        } catch {}
+        return false;
+    }
+
+    private async resolvePromptAndContext(userQuery: string, systemPrompt: string): Promise<{ queryText: string; finalSystemPrompt: string }> {
+        let finalSystemPrompt = systemPrompt;
+        let queryText = userQuery;
+        let customSystemPrompt: string | undefined = undefined;
+
+        const firstWord = userQuery.trim().split(/\s+/)[0];
+        if (firstWord.startsWith('/')) {
+            const promptName = firstWord.substring(1);
+            const promptFile = await this.findPromptFile(promptName);
+            if (promptFile) {
+                try {
+                    const content = await fs.promises.readFile(promptFile, 'utf8');
+                    const parsed = this.parsePromptFile(content, promptName);
+                    if (parsed.systemPrompt) {
+                        customSystemPrompt = parsed.systemPrompt;
+                    }
+                    const remainingInput = userQuery.trim().substring(firstWord.length).trim();
+                    queryText = parsed.promptBody;
+                    if (remainingInput) {
+                        queryText += '\n\n' + remainingInput;
+                    }
+                } catch (e) {
+                    console.error('Failed to read or parse custom prompt:', e);
+                }
+            }
+        }
+
+        const contextItems: { title: string; content: string }[] = [];
+        const matches = queryText.matchAll(/@([^\s]+)/g);
+        const resolvedTags = new Set<string>();
+
+        for (const match of matches) {
+            const tag = match[1];
+            if (resolvedTags.has(tag)) continue;
+            resolvedTags.add(tag);
+
+            if (tag === 'currentFile') {
+                const activeDoc = await this.getActiveEditorContent();
+                if (activeDoc) {
+                    contextItems.push({
+                        title: `@currentFile (${activeDoc.fileName})`,
+                        content: `\`\`\`${activeDoc.languageId || ''} ${activeDoc.fileName}\n${activeDoc.content}\n\`\`\``
+                    });
+                }
+            } else if (tag === 'gitDiff' || tag === 'diff') {
+                const diff = await this.getGitDiffContent();
+                if (diff) {
+                    contextItems.push({
+                        title: `@${tag}`,
+                        content: `\`\`\`diff\n${diff}\n\`\`\``
+                    });
+                }
+            } else {
+                try {
+                    const fullPath = path.isAbsolute(tag) ? tag : path.join(this.workspaceRoot, tag);
+                    const exists = await fs.promises.access(fullPath).then(() => true).catch(() => false);
+                    if (exists) {
+                        const stat = await fs.promises.stat(fullPath);
+                        if (stat.isFile() && stat.size < 100 * 1024) {
+                            const fileContent = await fs.promises.readFile(fullPath, 'utf8');
+                            const ext = path.extname(tag).toLowerCase().substring(1);
+                            contextItems.push({
+                                title: `@${tag}`,
+                                content: `\`\`\`${ext} ${tag}\n${fileContent}\n\`\`\``
+                            });
+                        }
+                    }
+                } catch (e) {}
+            }
+        }
+
+        if (contextItems.length > 0) {
+            const contextText = contextItems.map(item => `Context ${item.title}:\n${item.content}`).join('\n\n');
+            queryText = `${contextText}\n\n${queryText}`;
+        }
+
+        const rules = await this.loadRules();
+        const activeFiles = Array.from(resolvedTags).filter(t => t !== 'currentFile' && t !== 'gitDiff' && t !== 'diff');
+        const activeEditorFile = await this.getActiveEditorFilePath();
+        if (activeEditorFile) {
+            activeFiles.push(activeEditorFile);
+        }
+
+        const matchedRules = this.matchRules(rules, activeFiles);
+        
+        if (customSystemPrompt) {
+            finalSystemPrompt = customSystemPrompt;
+        }
+
+        if (matchedRules.length > 0) {
+            finalSystemPrompt += '\n\n' + matchedRules.map(r => `Rule: ${r.name}\n${r.instruction}`).join('\n\n');
+        }
+
+        return { queryText, finalSystemPrompt };
+    }
+
     cancel() {
         this.isCancelled = true;
         if (this.abortController) {
@@ -116,6 +464,51 @@ export class Agent {
         const kiContext = await this.loadKnowledgeItems();
         const modelLower = this.model.toLowerCase();
         const isNonToolModel = forceNonTool || modelLower.includes('deepseek') || modelLower.includes('gemma') || modelLower.includes('r1');
+
+        const CODEBLOCK_FORMATTING_INSTRUCTIONS = `\
+  Always include the language and file name in the info string when you write code blocks.
+  If you are editing "src/main.py" for example, your code block should start with '\`\`\`python src/main.py'`;
+
+        const EDIT_CODE_INSTRUCTIONS = `\
+  When addressing code modification requests, present a concise code snippet that
+  emphasizes only the necessary changes and uses abbreviated placeholders for
+  unmodified sections. For example:
+
+  \`\`\`language /path/to/file
+  // ... existing code ...
+
+  {{ modified code here }}
+
+  // ... existing code ...
+
+  {{ another modification }}
+
+  // ... rest of code ...
+  \`\`\`
+
+  In existing files, you should always restate the function or class that the snippet belongs to:
+
+  \`\`\`language /path/to/file
+  // ... existing code ...
+
+  function exampleFunction() {
+    // ... existing code ...
+
+    {{ modified code here }}
+
+    // ... rest of function ...
+  }
+
+  // ... rest of code ...
+  \`\`\`
+
+  Since users have access to their complete file, they prefer reading only the
+  relevant modifications. It's perfectly acceptable to omit unmodified portions
+  at the beginning, middle, or end of files using these "lazy" comments. Only
+  provide the complete file when explicitly requested. Include a concise explanation
+  of changes unless the user specifically asks for code only.`;
+
+        const BRIEF_LAZY_INSTRUCTIONS = `  For larger codeblocks (>20 lines), use brief language-appropriate placeholders for unmodified sections, e.g. '// ... existing code ...'`;
 
         let nonToolInstructions = '';
         if (isNonToolModel && mode !== 'chat') {
@@ -180,7 +573,17 @@ Ensure you use the exact parameter names listed above. For example, to read a fi
             promptText = `You are Wind Agent, a helpful software engineering assistant.
 You are in CHAT mode. Converse with the user, answer their questions, explain concepts, or help them brainstorm.
 You do NOT have access to workspace tools in this mode.
-Keep your responses concise, direct, and focused.`;
+Keep your responses concise, direct, and focused.
+
+<important_rules>
+  You are in chat mode.
+
+  If the user asks to make changes to files offer that they can use the Apply Button on the code block, or switch to Agent Mode to make the suggested updates automatically.
+  If needed concisely explain to the user they can switch to agent mode using the Mode Selector dropdown and provide no other details.
+
+${CODEBLOCK_FORMATTING_INSTRUCTIONS}
+${EDIT_CODE_INSTRUCTIONS}
+</important_rules>`;
         } else if (mode === 'plan') {
             if (this.fastAction) {
                 promptText = `You are Wind Agent, an autonomous software engineering assistant.
@@ -197,7 +600,21 @@ You are in PLAN mode. Your goal is to analyze the workspace and write a detailed
 Workspace: ${this.workspaceRoot}
 
 Rules:
-4. Keep your reasoning clear and responses concise.`;
+4. Keep your reasoning clear and responses concise.
+
+<important_rules>
+  You are in plan mode, in which you help the user understand and construct a plan.
+  Only use read-only tools. Do not use any tools that would write to non-temporary files.
+  If the user wants to make changes, offer that they can switch to Agent mode to give you access to write tools to make the suggested updates.
+
+${CODEBLOCK_FORMATTING_INSTRUCTIONS}
+
+${BRIEF_LAZY_INSTRUCTIONS}
+
+  However, only output codeblocks for suggestion and planning purposes. When ready to implement changes, request to switch to Agent mode.
+
+  In plan mode, only write code when directly suggesting changes. Prioritize understanding and developing a plan.
+</important_rules>`;
             }
         } else if (mode === 'auto') {
             promptText = `You are Wind Agent, an autonomous software engineering assistant.
@@ -224,23 +641,17 @@ Planning Guidelines:
    - Is a minor follow-up to an existing plan.
    In this case, act as a direct agent or conversational partner. You can execute tools directly or reply directly to the user without generating a [PLAN_START] / [PLAN_END] block.
 
-Rules:
-1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
-2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed or cannot be completed due to an error, provide your final response and stop. Do not make unnecessary or redundant tool calls.
-3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-4. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further actions are possible/needed, conclude your response immediately without invoking any more tools.
+<important_rules>
+  You are in agent mode.
 
-Tool Guidelines:
-- listDir: list directories without recursive clutter.
-- readFile: specify startLine and endLine for large files.
-- grepSearch: search for regular expression patterns or text within files in a directory. Use this instead of running shell search commands (like grep, find) in the terminal.
-- File edits: use replaceFileContent (single edit) or multiReplaceFileContent (multiple edits) with unique targetContent. Use writeFile ONLY for new or fully rewritten files.
-- searchWeb: search for libraries, docs, or errors.
-- runCommand: run commands in the workspace root. For background servers/processes, use 'runInBackground: true' to get a commandId, then monitor with getCommandStatus/sendCommandInput.
-- runTerminalCommand: execute interactive shell commands in the visible VS Code terminal panel (Wind Agent Terminal).
-- Browser automation: use browserOpen, browserClick, browserType, browserGetContent, browserScreenshot, browserClose, or the advanced browserSubagent.
-- saveKnowledgeItem: Use this proactively to save any important setup, architectural rules, or context you learn about the project.
-- If 'implementation_plan.md' or 'task.md' exists, read/reference them to guide your work.`;
+  If you need to use multiple tools, you can call multiple read-only tools simultaneously.
+
+${CODEBLOCK_FORMATTING_INSTRUCTIONS}
+
+${BRIEF_LAZY_INSTRUCTIONS}
+
+  However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
+</important_rules>`;
         } else if (mode === 'goal') {
             promptText = `You are Wind Agent, an autonomous software engineering assistant running in GOAL mode.
 Workspace: ${this.workspaceRoot}
@@ -248,12 +659,17 @@ Workspace: ${this.workspaceRoot}
 You are executing a high-level, long-running goal. You have a larger budget of reasoning steps (up to 100 loops) to complete the task thoroughly.
 Your focus is to autonomously achieve the goal, perform rigorous testing and self-verification, prevent bugs, and iteratively refine the solution until it is completely correct and robust. Do not stop until you are confident the goal is fully achieved.
 
-Rules:
-1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation.
-2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
-3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-4. Verify your work using automated tests and checks before completing the goal.
-5. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further progress can be made, conclude your response immediately without invoking any more tools.`;
+<important_rules>
+  You are in agent mode.
+
+  If you need to use multiple tools, you can call multiple read-only tools simultaneously.
+
+${CODEBLOCK_FORMATTING_INSTRUCTIONS}
+
+${BRIEF_LAZY_INSTRUCTIONS}
+
+  However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
+</important_rules>`;
         } else if (mode === 'grill') {
             promptText = `You are Wind Agent, an autonomous requirements-alignment and interviewing assistant running in GRILL-ME mode.
 Workspace: ${this.workspaceRoot}
@@ -271,29 +687,23 @@ Rules:
             promptText = `You are Wind Agent, an autonomous software engineering assistant.
 Workspace: ${this.workspaceRoot}
 
-Rules:
-1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
-2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
-3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-4. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further progress can be made, conclude your response immediately without invoking any more tools.
+<important_rules>
+  You are in agent mode.
 
-Tool Guidelines:
-- listDir: list directories without recursive clutter.
-- readFile: specify startLine and endLine for large files.
-- grepSearch: search for regular expression patterns or text within files in a directory. Use this instead of running shell search commands (like grep, find) in the terminal.
-- File edits: use replaceFileContent (single edit) or multiReplaceFileContent (multiple edits) with unique targetContent. Use writeFile ONLY for new or fully rewritten files.
-- searchWeb: search for libraries, docs, or errors.
-- runCommand: run commands in the workspace root. For background servers/processes, use 'runInBackground: true' to get a commandId, then monitor with getCommandStatus/sendCommandInput.
-- runTerminalCommand: execute interactive shell commands in the visible VS Code terminal panel (Wind Agent Terminal).
-- Browser automation: use browserOpen, browserClick, browserType, browserGetContent, browserScreenshot, browserClose, or the advanced browserSubagent.
-- saveKnowledgeItem: Use this proactively to save any important setup, architectural rules, or context you learn about the project.
-- If 'implementation_plan.md' or 'task.md' exists, read/reference them to guide your work.`;
+  If you need to use multiple tools, you can call multiple read-only tools simultaneously.
+
+${CODEBLOCK_FORMATTING_INSTRUCTIONS}
+
+${BRIEF_LAZY_INSTRUCTIONS}
+
+  However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
+</important_rules>`;
         }
 
         if (mode !== 'chat') {
             const platform = os.platform();
             const platformName = platform === 'win32' ? 'Windows' : platform === 'darwin' ? 'macOS' : 'Linux';
-            const shellName = platform === 'win32' ? 'PowerShell or cmd.exe' : 'bash or sh';
+            const shellName = platform === 'win32' ? 'PowerShell' : 'bash or sh';
             
             promptText += `\n\n[ENVIRONMENT]
 Host OS: ${platformName} (using ${shellName} shell)
@@ -301,6 +711,9 @@ CRITICAL: When executing commands or searching files, you must respect the host 
             if (platform === 'win32') {
                 promptText += `
 - Traditional Unix commands like 'grep', 'cat', 'ls', 'rm', 'mv', 'cp' are NOT natively available in this Windows environment.
+- The terminal shell is PowerShell (NOT cmd.exe). Traditional cmd.exe syntax/commands (e.g., 'del /Q', 'rmdir /S', '&&', '||') will fail.
+- For joining multiple commands in PowerShell, use ';' instead of '&&' or '||'.
+- For file deletion or directory removal, use PowerShell cmdlets (e.g., 'Remove-Item -Recurse -Force') or write a small Node.js script, or run them via 'cmd.exe /c "..."' if cmd syntax is necessary.
 - If you need to search files for patterns or regular expressions, you MUST use the 'grepSearch' tool instead of running 'grep' inside 'runTerminalCommand' or 'runCommand'.
 - Do NOT run 'grep', 'find', 'ack', etc., in the terminal. Always prefer the 'grepSearch' tool for searching codebase contents.`;
             }
@@ -362,15 +775,21 @@ CRITICAL: Fast Action is enabled. You must execute tools immediately.
 
         // Ensure system prompt is updated based on the current mode
         const systemPrompt = await this.getSystemPrompt(mode);
+        
+        // Resolve custom prompt files and dynamic context references (@ tags)
+        const resolved = await this.resolvePromptAndContext(userQuery, systemPrompt);
+        const finalQueryText = resolved.queryText;
+        const finalSystemPrompt = resolved.finalSystemPrompt;
+
         if (this.messages.length === 0) {
-            this.messages.push({ role: 'system', content: systemPrompt });
+            this.messages.push({ role: 'system', content: finalSystemPrompt });
         } else if (this.messages[0] && this.messages[0].role === 'system') {
-            this.messages[0].content = systemPrompt;
+            this.messages[0].content = finalSystemPrompt;
         } else {
-            this.messages.unshift({ role: 'system', content: systemPrompt });
+            this.messages.unshift({ role: 'system', content: finalSystemPrompt });
         }
 
-        let queryText = userQuery;
+        let queryText = finalQueryText;
         if (mode === 'plan') {
             if (this.fastAction) {
                 queryText = `Please analyze the workspace and write a list of tasks for the implementation plan. You can only read files and list directories. Do NOT modify any files or execute commands.
@@ -553,7 +972,7 @@ ${userQuery}`;
             const toolCalls = assistantMessage.tool_calls;
             if (!toolCalls || toolCalls.length === 0) {
                 // No more tools requested, we are done
-                return accumulatedContent || 'Task completed.';
+                return assistantMessage.content || accumulatedContent || 'Task completed.';
             }
 
             // Print intermediate text content if present (already streamed to UI, but good to log)

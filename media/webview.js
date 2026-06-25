@@ -528,6 +528,11 @@
         if (messageInput) messageInput.disabled = true;
         if (sendButton) sendButton.disabled = true;
 
+        const modalTitle = document.getElementById('question-modal-title');
+        if (modalTitle) {
+            modalTitle.textContent = args.title || 'Clarification Required';
+        }
+
         modalText.innerHTML = formatMarkdown(question);
         optionsContainer.innerHTML = '';
         if (writeInInput) {
@@ -624,6 +629,403 @@
                 toolId: toolId,
                 answer: answers
             });
+        };
+    }
+
+    // Close Question Modal listener
+    const closeQuestionModalBtn = document.getElementById('close-question-modal-btn');
+    if (closeQuestionModalBtn) {
+        closeQuestionModalBtn.addEventListener('click', () => {
+            const modal = document.getElementById('question-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+            if (messageInput) messageInput.disabled = false;
+            if (sendButton) {
+                sendButton.disabled = messageInput.value.trim() === '';
+            }
+        });
+    }
+
+    function detectAndParseOptions(text) {
+        if (!text) return null;
+        
+        const textLower = text.toLowerCase();
+        
+        // Basic check: must have at least one choice keyword or question mark
+        const choicePhrases = [
+            'choose', 'select', 'option', 'which', 'what would you', 'would you like', 'what should I', 'your choice',
+            'chọn', 'lựa chọn', 'phương án', 'hướng nào', 'bạn muốn', 'hãy cho tôi biết', 'bạn chọn'
+        ];
+        const hasQuestionMark = text.includes('?');
+        const hasChoiceKeyword = choicePhrases.some(phrase => textLower.includes(phrase));
+        
+        if (!hasQuestionMark && !hasChoiceKeyword) {
+            return null;
+        }
+
+        const lines = text.split('\n');
+        const options = [];
+        let optionStartIndex = -1;
+        let expectedNextNumber = 1;
+        let inCodeBlock = false;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            if (line.startsWith('```')) {
+                inCodeBlock = !inCodeBlock;
+                continue;
+            }
+            if (inCodeBlock) continue;
+
+            let cleanLine = line;
+            cleanLine = cleanLine.replace(/^\*\*(\d+)\.\*\*/, '$1.'); 
+            cleanLine = cleanLine.replace(/^\*\*(\d+)\*\*/, '$1.');   
+            cleanLine = cleanLine.replace(/^__(\d+)\.__/, '$1.');     
+            cleanLine = cleanLine.replace(/^__(\d+)__/, '$1.');       
+            cleanLine = cleanLine.replace(/^\*(\d+)\.\*/, '$1.');     
+            cleanLine = cleanLine.replace(/^\*(\d+)\*/, '$1.');       
+
+            const match = cleanLine.match(/^\[?(\d+)\]?[\.\)\-\:\s]\s*(.+)$/);
+            if (match) {
+                const num = parseInt(match[1], 10);
+                if (num === expectedNextNumber) {
+                    if (optionStartIndex === -1) {
+                        optionStartIndex = i;
+                    }
+                    options.push({
+                        number: num,
+                        text: match[2].trim(),
+                        originalIndex: i
+                    });
+                    expectedNextNumber++;
+                } else if (num === 1 && options.length > 0) {
+                    if (options.length >= 2) {
+                        break;
+                    } else {
+                        options.length = 0;
+                        options.push({
+                            number: num,
+                            text: match[2].trim(),
+                            originalIndex: i
+                        });
+                        optionStartIndex = i;
+                        expectedNextNumber = 2;
+                    }
+                }
+            }
+        }
+
+        if (options.length < 2) {
+            return null;
+        }
+
+        // Get the introductory text preceding the options list
+        const introLines = [];
+        for (let i = 0; i < optionStartIndex; i++) {
+            const line = lines[i].trim();
+            if (line.startsWith('```')) continue;
+            if (line) {
+                introLines.push(line);
+            }
+        }
+        const introText = introLines.join('\n');
+        const introTextLower = introText.toLowerCase();
+
+        // Find the last non-blank line of introductory text
+        let lastNonBlankIntroLine = '';
+        for (let i = optionStartIndex - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            if (line && !line.startsWith('```')) {
+                lastNonBlankIntroLine = line;
+                break;
+            }
+        }
+        const lastNonBlankIntroLineLower = lastNonBlankIntroLine.toLowerCase();
+
+        // 1. Filter out Yes/No questions about agent actions
+        const agentActionQuestionRegex = /\b(would you like me to|do you want me to|should i|can i|shall i|bạn có muốn tôi|tôi có nên|tôi có thể|có muốn tôi)\b/i;
+        if (agentActionQuestionRegex.test(introTextLower)) {
+            return null;
+        }
+
+        // 2. If the last intro line matches list/summary indicators, and does not contain strong choice prompts or a question mark, reject it
+        const listIntroRegex = /\b(plan|step|task|walkthrough|change|result|file|modified|created|deleted|run|execute|install|test|verify|list|log|checklist|summary|kế hoạch|bước|nhiệm vụ|thay đổi|kết quả|tập tin|cập nhật|tạo|xóa|chạy|thực thi|cài đặt|kiểm tra|xác minh|danh sách|nhật ký|tóm tắt|tổng hợp)\b/i;
+        const choiceRegex = /\b(choose|select|option|which|chọn|lựa chọn|phương án|hướng)\b/i;
+        
+        if (listIntroRegex.test(lastNonBlankIntroLineLower) && !choiceRegex.test(lastNonBlankIntroLineLower) && !lastNonBlankIntroLine.includes('?')) {
+            return null;
+        }
+
+        // 3. If intro text contains general summary/plan words, reject it unless it has a strong choice prompt
+        const summaryRegex = /\b(summary|tóm tắt|tổng hợp|walkthrough|result|kết quả|completed|hoàn thành|changed|thay đổi|modified|cập nhật|created|tạo|deleted|xóa|verify|xác minh|kiểm tra|proposed|đề xuất|task|nhiệm vụ|step|bước|list\s+of|danh\s+sách|nhật\s+ký|changelog|log)\b/i;
+        const hasQuestionInIntro = introText.includes('?');
+        
+        // Strong choice prompts to override summary checks or allow option display
+        const strongChoicePrompts = [
+            'please choose', 'please select', 'select one of', 'choose one of', 'choose which', 'pick one of', 'make your choice',
+            'vui lòng chọn', 'hãy chọn', 'chọn một', 'lựa chọn một', 'bạn chọn', 'bạn muốn chọn', 'hãy cho biết', 'hướng giải quyết',
+            'bạn muốn tôi', 'which one', 'which of the', 'what should i'
+        ];
+        const hasStrongChoiceInIntro = strongChoicePrompts.some(p => introTextLower.includes(p));
+
+        if (summaryRegex.test(introTextLower) && !hasStrongChoiceInIntro) {
+            return null;
+        }
+
+        // 4. Strict check: introText must have a question mark OR a strong choice prompt
+        if (!hasQuestionInIntro && !hasStrongChoiceInIntro) {
+            return null;
+        }
+
+        // 5. Validate options. If they look like files, paths, plan tags, or command executions, reject it
+        const fileExtensionRegex = /\.(ts|tsx|js|jsx|py|json|css|html|md|txt|go|rs|java|cpp|h|cs|yml|yaml|sh|bat|vsix|png|jpg|jpeg|gif|svg|exe|dll|zip|tar|gz)\b/i;
+        const planTagRegex = /\[(new|modify|delete|added|removed|updated|fixed)\]/i;
+        const commandRegex = /^(git|npm|node|npx|pip|python|cargo|mvn|gradle|docker|cd)\s/i;
+
+        for (const opt of options) {
+            const optText = opt.text.trim();
+            
+            // Check for file link URI
+            if (optText.includes('file:///')) {
+                return null;
+            }
+            // Check for file extensions
+            if (fileExtensionRegex.test(optText)) {
+                return null;
+            }
+            // Check for path patterns: e.g. folder/subfolder or folder\subfolder
+            if (/\w+[\/\\]\w+/.test(optText)) {
+                return null;
+            }
+            // Check for markdown file link syntax
+            if (/\[.*?\]\(.*?\)/.test(optText) && (optText.includes('.') || optText.includes('/') || optText.includes('\\'))) {
+                return null;
+            }
+            // Check for plan action tags
+            if (planTagRegex.test(optText)) {
+                return null;
+            }
+            // Check for commands
+            if (commandRegex.test(optText)) {
+                return null;
+            }
+        }
+
+        const question = introText || "Please select one of the following options:";
+
+        return {
+            question: question,
+            options: options.map(o => o.text),
+            rawOptions: options
+        };
+    }
+
+    function detectYesNoQuestion(text) {
+        if (!text) return null;
+        
+        const textLower = text.toLowerCase();
+        
+        // Check for general Yes/No markers
+        const agentActionQuestionRegex = /\b(would you like me to|do you want me to|should i|can i|shall i|bạn có muốn tôi|tôi có nên|tôi có thể|có muốn tôi)\b/i;
+        if (!agentActionQuestionRegex.test(textLower)) {
+            return null;
+        }
+
+        // Find the sentence that contains the agent action question.
+        const sentences = text.split(/[\.\!\?\n]+/);
+        let targetSentence = '';
+        
+        // Find the last sentence matching the regex
+        for (let i = sentences.length - 1; i >= 0; i--) {
+            const s = sentences[i].trim();
+            if (s && agentActionQuestionRegex.test(s)) {
+                targetSentence = s;
+                break;
+            }
+        }
+
+        if (!targetSentence) {
+            // Fallback to searching lines
+            const lines = text.split('\n');
+            for (let i = lines.length - 1; i >= 0; i--) {
+                const line = lines[i].trim();
+                if (line && agentActionQuestionRegex.test(line)) {
+                    targetSentence = line;
+                    break;
+                }
+            }
+        }
+
+        if (!targetSentence) return null;
+
+        // Clean up question text
+        let cleanQuestion = targetSentence.trim();
+        if (!cleanQuestion.endsWith('?')) {
+            cleanQuestion += '?';
+        }
+        
+        // Capitalize first character
+        cleanQuestion = cleanQuestion.charAt(0).toUpperCase() + cleanQuestion.slice(1);
+
+        return cleanQuestion;
+    }
+
+    function checkAndShowMessageOptions(text) {
+        const yesNoPopup = document.getElementById('yes-no-popup');
+        const yesNoPopupText = document.getElementById('yes-no-popup-text');
+        const yesNoYesBtn = document.getElementById('yes-no-popup-yes-btn');
+        const yesNoNoBtn = document.getElementById('yes-no-popup-no-btn');
+        const yesNoCloseBtn = document.getElementById('yes-no-popup-close-btn');
+
+        // Check if there is a Yes/No question first
+        const yesNoQuestion = detectYesNoQuestion(text);
+        if (yesNoQuestion && yesNoPopup && yesNoPopupText && yesNoYesBtn && yesNoNoBtn && yesNoCloseBtn) {
+            yesNoPopupText.textContent = yesNoQuestion;
+
+            // Detect language for button labels
+            const isVietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(yesNoQuestion);
+            yesNoYesBtn.textContent = isVietnamese ? 'Có' : 'Yes';
+            noBtn = yesNoNoBtn; // Keep compat with noBtn variable scope
+            yesNoNoBtn.textContent = isVietnamese ? 'Không' : 'No';
+
+            // Show popup
+            yesNoPopup.classList.remove('hidden');
+
+            const submitYesNo = (answerText) => {
+                yesNoPopup.classList.add('hidden');
+                if (messageInput) {
+                    messageInput.value = answerText;
+                    messageInput.style.height = 'auto';
+                    messageInput.style.height = (messageInput.scrollHeight) + 'px';
+                    if (sendButton) sendButton.disabled = false;
+                    sendMessage();
+                }
+            };
+
+            yesNoYesBtn.onclick = () => {
+                submitYesNo(isVietnamese ? 'Có' : 'Yes');
+            };
+
+            yesNoNoBtn.onclick = () => {
+                submitYesNo(isVietnamese ? 'Không' : 'No');
+            };
+
+            yesNoCloseBtn.onclick = () => {
+                yesNoPopup.classList.add('hidden');
+            };
+            return;
+        }
+
+        // Hide yes/no popup if open when showing multiple choice modal
+        if (yesNoPopup) {
+            yesNoPopup.classList.add('hidden');
+        }
+
+        const parsed = detectAndParseOptions(text);
+        if (!parsed) return;
+
+        const { question, options } = parsed;
+
+        const modal = document.getElementById('question-modal');
+        const modalText = document.getElementById('question-modal-text');
+        const optionsContainer = document.getElementById('question-modal-options');
+        const submitBtn = document.getElementById('question-modal-submit');
+        const writeInInput = document.getElementById('question-modal-write-in');
+
+        if (!modal || !modalText || !optionsContainer || !submitBtn) return;
+
+        if (messageInput) messageInput.disabled = true;
+        if (sendButton) sendButton.disabled = true;
+
+        const modalTitle = document.getElementById('question-modal-title');
+        if (modalTitle) {
+            modalTitle.textContent = 'Select an Option';
+        }
+
+        modalText.innerHTML = formatMarkdown(question);
+        optionsContainer.innerHTML = '';
+        if (writeInInput) {
+            writeInInput.value = '';
+        }
+
+        const selectedOptions = new Set();
+
+        options.forEach((optText, optIdx) => {
+            const row = document.createElement('div');
+            row.className = 'option-row';
+            
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.name = 'ask-question-option';
+            input.className = 'option-input';
+            
+            const num = parsed.rawOptions[optIdx].number;
+            const fullOptText = `${num}. ${optText}`;
+            input.value = fullOptText;
+            input.id = `opt-input-${optIdx}`;
+
+            const label = document.createElement('label');
+            label.className = 'option-label';
+            label.setAttribute('for', `opt-input-${optIdx}`);
+            label.textContent = fullOptText;
+
+            row.appendChild(input);
+            row.appendChild(label);
+
+            const toggleSelect = () => {
+                optionsContainer.querySelectorAll('.option-row').forEach(r => r.classList.remove('selected'));
+                optionsContainer.querySelectorAll('.option-input').forEach(i => i.checked = false);
+                input.checked = true;
+                row.classList.add('selected');
+                selectedOptions.clear();
+                selectedOptions.add(fullOptText);
+            };
+
+            row.onclick = (e) => {
+                if (e.target === input || e.target === label) return;
+                toggleSelect();
+            };
+
+            input.onchange = () => {
+                optionsContainer.querySelectorAll('.option-row').forEach(r => r.classList.remove('selected'));
+                row.classList.add('selected');
+                selectedOptions.clear();
+                selectedOptions.add(fullOptText);
+            };
+
+            optionsContainer.appendChild(row);
+        });
+
+        modal.classList.remove('hidden');
+
+        submitBtn.onclick = () => {
+            const writeInVal = writeInInput ? writeInInput.value.trim() : '';
+            if (selectedOptions.size === 0 && !writeInVal) {
+                return;
+            }
+            
+            modal.classList.add('hidden');
+            
+            if (messageInput) messageInput.disabled = false;
+            if (sendButton) sendButton.disabled = false;
+
+            let finalAnswer = '';
+            if (writeInVal) {
+                finalAnswer = writeInVal;
+            } else if (selectedOptions.size > 0) {
+                finalAnswer = Array.from(selectedOptions)[0];
+            }
+
+            if (finalAnswer) {
+                messageInput.value = finalAnswer;
+                messageInput.style.height = 'auto';
+                messageInput.style.height = (messageInput.scrollHeight) + 'px';
+                sendButton.disabled = false;
+                sendMessage();
+            }
         };
     }
 
@@ -777,56 +1179,16 @@
     let workspaceFiles = [];
     const staticMentions = [
         {
-            value: 'Files',
-            label: 'Files',
-            icon: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-            </svg>`
+            value: 'currentFile',
+            label: 'currentFile',
+            icon: '📄',
+            description: 'Nội dung file đang active trong editor'
         },
         {
-            value: 'Directories',
-            label: 'Directories',
-            icon: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-            </svg>`
-        },
-        {
-            value: 'Rules',
-            label: 'Rules',
-            icon: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="7" y1="8" x2="17" y2="8"></line>
-                <line x1="7" y1="12" x2="17" y2="12"></line>
-                <line x1="7" y1="16" x2="12" y2="16"></line>
-            </svg>`
-        },
-        {
-            value: 'Terminal',
-            label: 'Terminal',
-            icon: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="4 17 10 11 4 5"></polyline>
-                <line x1="12" y1="19" x2="20" y2="19"></line>
-            </svg>`
-        },
-        {
-            value: 'Conversation',
-            label: 'Conversation',
-            icon: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-            </svg>`
-        },
-        {
-            value: 'MCP Servers',
-            label: 'MCP Servers',
-            icon: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-                <line x1="6" y1="6" x2="6.01" y2="6"></line>
-                <line x1="6" y1="18" x2="6.01" y2="18"></line>
-                <line x1="20" y1="6" x2="20.01" y2="6"></line>
-                <line x1="20" y1="18" x2="20.01" y2="18"></line>
-            </svg>`
+            value: 'gitDiff',
+            label: 'gitDiff',
+            icon: '⚡',
+            description: 'Các thay đổi git chưa commit'
         }
     ];
 
@@ -1009,7 +1371,7 @@
                 icon = '⚡';
                 label = `${item.name}:${item.startLine}-${item.endLine}`;
             } else if (item.type === 'static') {
-                icon = '🏷️';
+                icon = item.name === 'gitDiff' ? '⚡' : '📄';
                 label = `@${item.name}`;
             }
             
@@ -1075,7 +1437,10 @@
                         html += `
                             <div class="mention-item${index === 0 ? ' active' : ''}" data-value="${item.value}">
                                 <span class="mention-icon">${item.icon}</span>
-                                <span class="mention-label">${item.label}</span>
+                                <span class="mention-label">
+                                    @${item.label}
+                                    ${item.description ? `<span class="mention-path">${item.description}</span>` : ''}
+                                </span>
                             </div>
                         `;
                         index++;
@@ -2123,14 +2488,14 @@
                     const url = imgMatch[2];
                     slideHtml = `<div class="carousel-slide-content img-slide"><img src="${url}" alt="${caption}" /><div class="carousel-caption">${caption}</div></div>`;
                 } else {
-                    const codeMatch = slideHtml.match(/```(\w*)\n([\s\S]*?)```/);
+                    const codeMatch = slideHtml.match(/```(\w*)[^\n]*\n([\s\S]*?)```/);
                     if (codeMatch) {
-                        const lang = codeMatch[1];
-                        const code = codeMatch[2];
-                        slideHtml = `<div class="carousel-slide-content code-slide"><pre><code class="language-${lang}">${code.trim()}</code></pre></div>`;
-                    } else {
-                        slideHtml = `<div class="carousel-slide-content text-slide"><p>${slideHtml.replace(/\n/g, '<br/>')}</p></div>`;
-                    }
+                         const lang = codeMatch[1];
+                         const code = codeMatch[2];
+                         slideHtml = `<div class="carousel-slide-content code-slide"><pre><code class="language-${lang}">${escapeHtml(code.trim())}</code></pre></div>`;
+                     } else {
+                         slideHtml = `<div class="carousel-slide-content text-slide"><p>${slideHtml.replace(/\n/g, '<br/>')}</p></div>`;
+                     }
                 }
                 
                 return `<div class="wind-carousel-slide ${activeClass}">${slideHtml}</div>`;
@@ -2152,9 +2517,9 @@
         });
 
         // Extract and temporarily store code blocks to prevent them from being formatted or escaped
-        html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
+        html = html.replace(/```(\w*)[^\n]*\n([\s\S]*?)```/g, (match, lang, code) => {
             const placeholder = `___WIND_CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}___`;
-            codeBlocks.push(`<pre><code class="language-${lang}">${code.trim()}</code></pre>`);
+            codeBlocks.push(`<pre><code class="language-${lang}">${escapeHtml(code.trim())}</code></pre>`);
             return placeholder;
         });
 
@@ -3597,6 +3962,23 @@
                     autocompleteTimeoutInputElement.value = autocompleteTimeoutVal.toString();
                 }
                 break;
+            case 'updateSlashCommands': {
+                const slashDropdown = document.getElementById('slash-dropdown');
+                if (slashDropdown && message.commands) {
+                    slashDropdown.innerHTML = '';
+                    message.commands.forEach((cmd) => {
+                        const item = document.createElement('div');
+                        item.className = 'mention-item';
+                        item.setAttribute('data-value', cmd.name + ' ');
+                        item.innerHTML = `
+                            <span class="mention-icon">${cmd.icon || '📝'}</span>
+                            <span class="mention-label">${cmd.name} <span style="opacity: 0.7; font-size: 0.85em; font-weight: normal; margin-left: 6px;">${cmd.description}</span></span>
+                        `;
+                        slashDropdown.appendChild(item);
+                    });
+                }
+            }
+            break;
             case 'streamThought':
                 removeThinkingBubble();
                 appendThought(message.text, true, message.title);
@@ -3660,9 +4042,13 @@
                         appendMessage('agent', cleanText, false, message.index, message.images, message.contextItems);
                     }
                     isStreaming = false;
+                    checkAndShowMessageOptions(cleanText);
                 } else {
                     removeThinkingBubble();
                     appendMessage(message.sender, cleanText, false, message.index, message.images, message.contextItems);
+                    if (message.sender === 'agent') {
+                        checkAndShowMessageOptions(cleanText);
+                    }
                 }
 
                 if (planBlock) {

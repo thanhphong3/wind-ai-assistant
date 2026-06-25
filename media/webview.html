@@ -225,6 +225,21 @@
                 </div>
             </div>
             
+            <!-- Yes/No Inline Popup -->
+            <div id="yes-no-popup" class="yes-no-popup hidden">
+                <div class="yes-no-popup-header">
+                    <span class="yes-no-popup-icon">❓</span>
+                    <span id="yes-no-popup-text" class="yes-no-popup-text">Do you want to proceed?</span>
+                    <button class="yes-no-popup-close" id="yes-no-popup-close-btn" title="Close" type="button">
+                        &times;
+                    </button>
+                </div>
+                <div class="yes-no-popup-buttons">
+                    <button class="yes-no-btn yes-btn" id="yes-no-popup-yes-btn">Yes</button>
+                    <button class="yes-no-btn no-btn" id="yes-no-popup-no-btn">No</button>
+                </div>
+            </div>
+
             <!-- No Models Safety Warning -->
             <div id="no-models-warning" class="no-models-warning hidden" style="background: rgba(234, 67, 53, 0.08); border: 1px solid rgba(234, 67, 53, 0.2); border-radius: 12px; padding: 14px; text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center;">
                 <span style="font-size: 18px;">⚠️</span>
@@ -572,9 +587,17 @@
     <!-- Ask Question Modal -->
     <div class="modal-overlay hidden" id="question-modal">
         <div class="modal-card">
-            <div class="modal-header">
-                <span class="modal-title-icon">❓</span>
-                <h3 id="question-modal-title">Clarification Required</h3>
+            <div class="modal-header" style="justify-content: space-between; width: 100%; box-sizing: border-box;">
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                    <span class="modal-title-icon">❓</span>
+                    <h3 id="question-modal-title" style="margin: 0;">Clarification Required</h3>
+                </div>
+                <button class="close-drawer-btn" id="close-question-modal-btn" title="Close" type="button">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
             <div class="modal-body">
                 <p id="question-modal-text"></p>

@@ -317,6 +317,9 @@ body {
     border-radius: 8px;
     padding: 14px;
     overflow-x: auto;
+    white-space: pre;
+    word-break: normal;
+    word-wrap: normal;
     font-family: 'Consolas', 'Courier New', Courier, monospace;
     font-size: 12px;
     margin: 12px 0;
@@ -3651,5 +3654,98 @@ textarea::placeholder {
 .configured-ai-action-btn.delete:hover {
     color: var(--accent-red, #ff4d4f);
 }
+
+/* Yes/No Inline Popup styles */
+.yes-no-popup {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    animation: slideInUp 0.2s ease-out;
+}
+
+.yes-no-popup-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    justify-content: space-between;
+}
+
+.yes-no-popup-icon {
+    font-size: 14px;
+}
+
+.yes-no-popup-text {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.yes-no-popup-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 16px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+}
+
+.yes-no-popup-close:hover {
+    color: var(--text-primary);
+}
+
+.yes-no-popup-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.yes-no-btn {
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.yes-btn {
+    background: var(--accent-blue);
+    color: white;
+}
+
+.yes-btn:hover {
+    background: var(--accent-blue-hover, #005a9e);
+}
+
+.no-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.no-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 
 
