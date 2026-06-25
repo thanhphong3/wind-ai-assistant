@@ -3,6 +3,7 @@ import { StringDecoder } from 'string_decoder';
 import { TOOLS, ToolsManager } from './tools';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 export interface AgentCallbacks {
     onLog: (text: string) => void;
@@ -232,9 +233,11 @@ Rules:
 Tool Guidelines:
 - listDir: list directories without recursive clutter.
 - readFile: specify startLine and endLine for large files.
+- grepSearch: search for regular expression patterns or text within files in a directory. Use this instead of running shell search commands (like grep, find) in the terminal.
 - File edits: use replaceFileContent (single edit) or multiReplaceFileContent (multiple edits) with unique targetContent. Use writeFile ONLY for new or fully rewritten files.
 - searchWeb: search for libraries, docs, or errors.
-- runCommand: run commands. For background servers/processes, use 'runInBackground: true' to get a commandId, then monitor with getCommandStatus/sendCommandInput.
+- runCommand: run commands in the workspace root. For background servers/processes, use 'runInBackground: true' to get a commandId, then monitor with getCommandStatus/sendCommandInput.
+- runTerminalCommand: execute interactive shell commands in the visible VS Code terminal panel (Wind Agent Terminal).
 - Browser automation: use browserOpen, browserClick, browserType, browserGetContent, browserScreenshot, browserClose, or the advanced browserSubagent.
 - saveKnowledgeItem: Use this proactively to save any important setup, architectural rules, or context you learn about the project.
 - If 'implementation_plan.md' or 'task.md' exists, read/reference them to guide your work.`;
@@ -277,15 +280,31 @@ Rules:
 Tool Guidelines:
 - listDir: list directories without recursive clutter.
 - readFile: specify startLine and endLine for large files.
+- grepSearch: search for regular expression patterns or text within files in a directory. Use this instead of running shell search commands (like grep, find) in the terminal.
 - File edits: use replaceFileContent (single edit) or multiReplaceFileContent (multiple edits) with unique targetContent. Use writeFile ONLY for new or fully rewritten files.
 - searchWeb: search for libraries, docs, or errors.
-- runCommand: run commands. For background servers/processes, use 'runInBackground: true' to get a commandId, then monitor with getCommandStatus/sendCommandInput.
+- runCommand: run commands in the workspace root. For background servers/processes, use 'runInBackground: true' to get a commandId, then monitor with getCommandStatus/sendCommandInput.
+- runTerminalCommand: execute interactive shell commands in the visible VS Code terminal panel (Wind Agent Terminal).
 - Browser automation: use browserOpen, browserClick, browserType, browserGetContent, browserScreenshot, browserClose, or the advanced browserSubagent.
 - saveKnowledgeItem: Use this proactively to save any important setup, architectural rules, or context you learn about the project.
 - If 'implementation_plan.md' or 'task.md' exists, read/reference them to guide your work.`;
         }
 
         if (mode !== 'chat') {
+            const platform = os.platform();
+            const platformName = platform === 'win32' ? 'Windows' : platform === 'darwin' ? 'macOS' : 'Linux';
+            const shellName = platform === 'win32' ? 'PowerShell or cmd.exe' : 'bash or sh';
+            
+            promptText += `\n\n[ENVIRONMENT]
+Host OS: ${platformName} (using ${shellName} shell)
+CRITICAL: When executing commands or searching files, you must respect the host OS constraints.`;
+            if (platform === 'win32') {
+                promptText += `
+- Traditional Unix commands like 'grep', 'cat', 'ls', 'rm', 'mv', 'cp' are NOT natively available in this Windows environment.
+- If you need to search files for patterns or regular expressions, you MUST use the 'grepSearch' tool instead of running 'grep' inside 'runTerminalCommand' or 'runCommand'.
+- Do NOT run 'grep', 'find', 'ack', etc., in the terminal. Always prefer the 'grepSearch' tool for searching codebase contents.`;
+            }
+
             promptText += `\n\nWind Upgrades & Guidelines:
 - Scratch Workspace: For any temporary scripts, debug files, or trial code, you can use the \`.wind-scratch/\` directory under workspace root.
 - Interactive Questions: If you encounter design options, requirements ambiguity, or need user decisions, you can ask the user directly in your response, or invoke the \`askQuestion\` tool to present options.`;
