@@ -507,6 +507,18 @@ export class Agent {
   of changes unless the user specifically asks for code only.`;
 
         const BRIEF_LAZY_INSTRUCTIONS = `  For larger codeblocks (>20 lines), use brief language-appropriate placeholders for unmodified sections, e.g. '// ... existing code ...'`;
+        const TOOL_INSTRUCTIONS = 
+`Tool Guidelines:
+- listDir: list directories without recursive clutter.
+- readFile: specify startLine and endLine for large files.
+- grepSearch: search for regular expression patterns or text within files in a directory. Use this instead of running shell search commands (like grep, find) in the terminal.
+- File edits: use replaceFileContent (single edit) or multiReplaceFileContent (multiple edits) with unique targetContent. Use writeFile ONLY for new or fully rewritten files.
+- searchWeb: search for libraries, docs, or errors.
+- runCommand: run commands in the workspace root. For background servers/processes, use 'runInBackground: true' to get a commandId, then monitor with getCommandStatus/sendCommandInput.
+- runTerminalCommand: execute interactive shell commands in the visible VS Code terminal panel (Wind Agent Terminal).
+- Browser automation: use browserOpen, browserClick, browserType, browserGetContent, browserScreenshot, browserClose, or the advanced browserSubagent.
+- saveKnowledgeItem: Use this proactively to save any important setup, architectural rules, or context you learn about the project.
+- If 'implementation_plan.md' or 'task.md' exists, read/reference them to guide your work.`;
 
         let nonToolInstructions = '';
         if (isNonToolModel && mode !== 'chat') {
@@ -648,25 +660,12 @@ ${CODEBLOCK_FORMATTING_INSTRUCTIONS}
 
 ${BRIEF_LAZY_INSTRUCTIONS}
 
-  However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
-  
-  Rules:
-1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
-2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed or cannot be completed due to an error, provide your final response and stop. Do not make unnecessary or redundant tool calls.
-3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-4. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further actions are possible/needed, conclude your response immediately without invoking any more tools.
+However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
+If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed or cannot be completed due to an error, provide your final response and stop. Do not make unnecessary or redundant tool calls.
+Keep responses concise and focused. Explain your thoughts clearly before calling tools.
+Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further actions are possible/needed, conclude your response immediately without invoking any more tools.
 
-Tool Guidelines:
-- listDir: list directories without recursive clutter.
-- readFile: specify startLine and endLine for large files.
-- grepSearch: search for regular expression patterns or text within files in a directory. Use this instead of running shell search commands (like grep, find) in the terminal.
-- File edits: use replaceFileContent (single edit) or multiReplaceFileContent (multiple edits) with unique targetContent. Use writeFile ONLY for new or fully rewritten files.
-- searchWeb: search for libraries, docs, or errors.
-- runCommand: run commands in the workspace root. For background servers/processes, use 'runInBackground: true' to get a commandId, then monitor with getCommandStatus/sendCommandInput.
-- runTerminalCommand: execute interactive shell commands in the visible VS Code terminal panel (Wind Agent Terminal).
-- Browser automation: use browserOpen, browserClick, browserType, browserGetContent, browserScreenshot, browserClose, or the advanced browserSubagent.
-- saveKnowledgeItem: Use this proactively to save any important setup, architectural rules, or context you learn about the project.
-- If 'implementation_plan.md' or 'task.md' exists, read/reference them to guide your work.
+${TOOL_INSTRUCTIONS}
 </important_rules>`;
         } else if (mode === 'goal') {
             promptText = `You are Wind Agent, an autonomous software engineering assistant running in GOAL mode.
@@ -684,15 +683,12 @@ ${CODEBLOCK_FORMATTING_INSTRUCTIONS}
 
 ${BRIEF_LAZY_INSTRUCTIONS}
 
-  However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
-
-  Rules:
-1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation.
-2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
-3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-4. Verify your work using automated tests and checks before completing the goal.
-5. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further progress can be made, conclude your response immediately without invoking any more tools.
-  </important_rules>`;
+However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
+If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
+Keep responses concise and focused. Explain your thoughts clearly before calling tools.
+Verify your work using automated tests and checks before completing the goal.
+Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further progress can be made, conclude your response immediately without invoking any more tools.
+</important_rules>`;
         } else if (mode === 'grill') {
             promptText = `You are Wind Agent, an autonomous requirements-alignment and interviewing assistant running in GRILL-ME mode.
 Workspace: ${this.workspaceRoot}
@@ -719,24 +715,12 @@ ${CODEBLOCK_FORMATTING_INSTRUCTIONS}
 
 ${BRIEF_LAZY_INSTRUCTIONS}
 
-  However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
-Rules:
-1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
-2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
-3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-4. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further progress can be made, conclude your response immediately without invoking any more tools.
+However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
+If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed or cannot be completed due to an error, provide your final response and stop. Do not make unnecessary or redundant tool calls.
+Keep responses concise and focused. Explain your thoughts clearly before calling tools.
+Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further actions are possible/needed, conclude your response immediately without invoking any more tools.
 
-Tool Guidelines:
-- listDir: list directories without recursive clutter.
-- readFile: specify startLine and endLine for large files.
-- grepSearch: search for regular expression patterns or text within files in a directory. Use this instead of running shell search commands (like grep, find) in the terminal.
-- File edits: use replaceFileContent (single edit) or multiReplaceFileContent (multiple edits) with unique targetContent. Use writeFile ONLY for new or fully rewritten files.
-- searchWeb: search for libraries, docs, or errors.
-- runCommand: run commands in the workspace root. For background servers/processes, use 'runInBackground: true' to get a commandId, then monitor with getCommandStatus/sendCommandInput.
-- runTerminalCommand: execute interactive shell commands in the visible VS Code terminal panel (Wind Agent Terminal).
-- Browser automation: use browserOpen, browserClick, browserType, browserGetContent, browserScreenshot, browserClose, or the advanced browserSubagent.
-- saveKnowledgeItem: Use this proactively to save any important setup, architectural rules, or context you learn about the project.
-- If 'implementation_plan.md' or 'task.md' exists, read/reference them to guide your work.
+${TOOL_INSTRUCTIONS}
   </important_rules>`;
         }
 
