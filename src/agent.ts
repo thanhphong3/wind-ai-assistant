@@ -225,7 +225,7 @@ Planning Guidelines:
    In this case, act as a direct agent or conversational partner. You can execute tools directly or reply directly to the user without generating a [PLAN_START] / [PLAN_END] block.
 
 Rules:
-1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
+1. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
 2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed or cannot be completed due to an error, provide your final response and stop. Do not make unnecessary or redundant tool calls.
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
 4. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further actions are possible/needed, conclude your response immediately without invoking any more tools.
@@ -249,7 +249,7 @@ You are executing a high-level, long-running goal. You have a larger budget of r
 Your focus is to autonomously achieve the goal, perform rigorous testing and self-verification, prevent bugs, and iteratively refine the solution until it is completely correct and robust. Do not stop until you are confident the goal is fully achieved.
 
 Rules:
-1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation.
+1. Run tools immediately in the same response without waiting for permission/confirmation.
 2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
 4. Verify your work using automated tests and checks before completing the goal.
@@ -272,7 +272,7 @@ Rules:
 Workspace: ${this.workspaceRoot}
 
 Rules:
-1. Act autonomously. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
+1. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
 2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
 4. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further progress can be made, conclude your response immediately without invoking any more tools.
@@ -451,7 +451,6 @@ ${userQuery}`;
         let loopCount = 0;
         const maxLoops = mode === 'goal' ? 100 : 50; // Safeguard against infinite tool loops
         const toolCallHistory: string[] = [];
-        let accumulatedContent = '';
 
         const modelLower = this.model.toLowerCase();
         const isNonToolModel = modelLower.includes('deepseek') || modelLower.includes('gemma') || modelLower.includes('r1');
@@ -537,23 +536,13 @@ ${userQuery}`;
             // Store assistant's response in history
             this.messages.push(assistantMessage);
 
-            if (assistantMessage.content) {
-                const trimmed = assistantMessage.content.trim();
-                if (trimmed) {
-                    if (accumulatedContent) {
-                        if (!accumulatedContent.includes(trimmed)) {
-                            accumulatedContent += '\n\n' + trimmed;
-                        }
-                    } else {
-                        accumulatedContent = trimmed;
-                    }
-                }
-            }
-
             const toolCalls = assistantMessage.tool_calls;
             if (!toolCalls || toolCalls.length === 0) {
                 // No more tools requested, we are done
-                return accumulatedContent || 'Task completed.';
+                if (assistantMessage.content) {
+                    return assistantMessage.content
+                }
+                return  'Task completed.';
             }
 
             // Print intermediate text content if present (already streamed to UI, but good to log)
@@ -862,6 +851,11 @@ ${userQuery}`;
             let msgThoughtSignature: any = undefined;
             const activeToolCalls: any = {}; // map of index -> tool_call object
 
+            // Smart stream buffer: holds chunks that may be tool call JSON (triggered by '{').
+            // Flushed to UI only after confirming they are NOT tool calls.
+            let streamHoldBuffer = '';
+            let streamHoldActive = false;
+
             try {
                 // Always ensure a fresh AbortController for each LLM call
                 if (!this.abortController || this.abortController.signal.aborted) {
@@ -923,7 +917,16 @@ ${userQuery}`;
                             if (delta.content) {
                                 fullContent += delta.content;
                                 if (this.callbacks.onStreamChunk) {
-                                    this.callbacks.onStreamChunk(delta.content);
+                                    // Smart buffering: if we see '{', start buffering to prevent
+                                    // tool call JSON from being rendered directly in the chat UI.
+                                    if (!streamHoldActive && delta.content.includes('{')) {
+                                        streamHoldActive = true;
+                                    }
+                                    if (streamHoldActive) {
+                                        streamHoldBuffer += delta.content;
+                                    } else {
+                                        this.callbacks.onStreamChunk(delta.content);
+                                    }
                                 }
                                 if (detectRepetitiveLoop(fullContent)) {
                                     return true;
@@ -1103,6 +1106,13 @@ ${userQuery}`;
                                     if (finalToolCalls.length > 0) {
                                         assistantMsg.tool_calls = finalToolCalls;
                                     }
+                                    // Flush smart hold buffer (strip tool call JSON) before finishing
+                                    if (streamHoldActive && streamHoldBuffer && this.callbacks.onStreamChunk) {
+                                        const cleanedHold = cleanToolCallsFromText(streamHoldBuffer).trim();
+                                        if (cleanedHold) {
+                                            this.callbacks.onStreamChunk(cleanedHold);
+                                        }
+                                    }
                                     finish(assistantMsg);
                                     return;
                                 }
@@ -1141,6 +1151,15 @@ ${userQuery}`;
                                 } catch (_e) {}
                             }
                         }
+
+                        // Flush the smart hold buffer: strip tool call JSON before emitting to UI
+                        if (streamHoldActive && streamHoldBuffer && this.callbacks.onStreamChunk) {
+                            const cleaned = cleanToolCallsFromText(streamHoldBuffer).trim();
+                            if (cleaned) {
+                                this.callbacks.onStreamChunk(cleaned);
+                            }
+                        }
+
 
                         const finalToolCalls = Object.values(activeToolCalls) as any[];
                         const assistantMsg: any = {

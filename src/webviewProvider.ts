@@ -90,7 +90,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'wind-agent.chatView';
     private _view?: vscode.WebviewView;
     private _agent?: Agent;
-    private _pendingToolResolves = new Map<string, (approved: boolean) => void>();
+    private _pendingToolResolves = new Map<string, (approved: boolean | string[]) => void>();
     private _activeSessionId?: string;
     private _sessions: ChatSession[] = [];
     private _aiConfigs: any[] = [];
@@ -866,16 +866,10 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
 
                 case 'submitQuestionResponse': {
                     const toolId = data.toolId;
-                    const answer = data.answer;
-                    if (this._agent && this._agent.toolsManager) {
-                        this._agent.toolsManager.setLastQuestionResponse(answer);
-                    }
-                    for (const bgTask of this._backgroundTasks.values()) {
-                        if (bgTask.agent && bgTask.agent.toolsManager) {
-                            bgTask.agent.toolsManager.setLastQuestionResponse(answer);
-                        }
-                    }
-                    this._resolvePendingTool(toolId, true);
+                    const answer: string[] = Array.isArray(data.answer) ? data.answer : [];
+                    // Pass answers directly through the pending tool resolve so the
+                    // onToolCall callback can call setLastQuestionResponse with the correct data.
+                    this._resolvePendingTool(toolId, answer);
                     break;
                 }
                 case 'updateTaskStatus': {
@@ -1386,7 +1380,7 @@ ${errorCode}
         this._streamingFiles.clear();
     }
 
-    private _resolvePendingTool(toolId: string, approved: boolean) {
+    private _resolvePendingTool(toolId: string, approved: boolean | string[]) {
         const resolve = this._pendingToolResolves.get(toolId);
         if (resolve) {
             resolve(approved);
@@ -3013,7 +3007,10 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                             }
                             if (isQuestion) {
                                 const answers = Array.isArray(approvedOrAnswer) ? approvedOrAnswer : [];
-                                if (this._agent && this._agent.toolsManager) {
+                                // Set response on the bg task agent if available, else fallback to main agent
+                                if (bgTask && bgTask.agent && bgTask.agent.toolsManager) {
+                                    bgTask.agent.toolsManager.setLastQuestionResponse(answers);
+                                } else if (this._agent && this._agent.toolsManager) {
                                     this._agent.toolsManager.setLastQuestionResponse(answers);
                                 }
                                 resolve(true);
