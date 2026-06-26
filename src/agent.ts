@@ -660,11 +660,6 @@ ${CODEBLOCK_FORMATTING_INSTRUCTIONS}
 
 ${BRIEF_LAZY_INSTRUCTIONS}
 
-However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
-If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed or cannot be completed due to an error, provide your final response and stop. Do not make unnecessary or redundant tool calls.
-Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further actions are possible/needed, conclude your response immediately without invoking any more tools.
-
 ${TOOL_INSTRUCTIONS}
 </important_rules>`;
         } else if (mode === 'goal') {
@@ -683,11 +678,6 @@ ${CODEBLOCK_FORMATTING_INSTRUCTIONS}
 
 ${BRIEF_LAZY_INSTRUCTIONS}
 
-However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
-If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
-Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-Verify your work using automated tests and checks before completing the goal.
-Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further progress can be made, conclude your response immediately without invoking any more tools.
 </important_rules>`;
         } else if (mode === 'grill') {
             promptText = `You are Wind Agent, an autonomous requirements-alignment and interviewing assistant running in GRILL-ME mode.
@@ -710,15 +700,6 @@ Workspace: ${this.workspaceRoot}
   You are in agent mode.
 
   If you need to use multiple tools, you can call multiple read-only tools simultaneously.
-
-${CODEBLOCK_FORMATTING_INSTRUCTIONS}
-
-${BRIEF_LAZY_INSTRUCTIONS}
-
-However, only output codeblocks for suggestion and demonstration purposes, for example, when enumerating multiple hypothetical options. For implementing changes, use the edit tools.
-If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed or cannot be completed due to an error, provide your final response and stop. Do not make unnecessary or redundant tool calls.
-Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further actions are possible/needed, conclude your response immediately without invoking any more tools.
 
 ${TOOL_INSTRUCTIONS}
   </important_rules>`;
