@@ -119,9 +119,9 @@ export class Agent {
 
         let nonToolInstructions = '';
         if (isNonToolModel && mode !== 'chat') {
-            let selectedToolsForInstructions = TOOLS;
+            let selectedToolsForInstructions = this.toolsManager ? this.toolsManager.getAvailableTools() : TOOLS;
             if (mode === 'plan' || mode === 'grill') {
-                selectedToolsForInstructions = TOOLS.filter(t => 
+                selectedToolsForInstructions = selectedToolsForInstructions.filter(t => 
                     t.name === 'listFiles' ||
                     t.name === 'listDir' ||
                     t.name === 'readFile' ||
@@ -352,6 +352,7 @@ CRITICAL: Fast Action is enabled. You must execute tools immediately.
         this.abortController = new AbortController();
         if (this.toolsManager) {
             this.toolsManager.setLLMConfig(this.keys, this.endpoint, this.model);
+            await this.toolsManager.initializeMcp();
         }
         const isGoogle = this.endpoint.includes('googleapis.com');
         const isOpenAI = this.endpoint.includes('api.openai.com');
@@ -462,12 +463,12 @@ ${userQuery}`;
             }
             loopCount++;
 
-            let selectedTools = TOOLS;
+            let selectedTools = this.toolsManager ? this.toolsManager.getAvailableTools() : TOOLS;
             if (forceNonTool || mode === 'chat') {
                 selectedTools = [];
             } else if (mode === 'plan' || mode === 'grill') {
                 // Plan and grill modes only allow read-only tools
-                selectedTools = TOOLS.filter(t => 
+                selectedTools = selectedTools.filter(t => 
                     t.name === 'listFiles' ||
                     t.name === 'listDir' ||
                     t.name === 'readFile' ||
@@ -525,10 +526,11 @@ ${userQuery}`;
             // Check for text-based tool calls if no native tool calls were returned
             if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
                 if (assistantMessage.content) {
-                    const extracted = extractToolCallsFromText(assistantMessage.content);
+                    const validToolNames = new Set(selectedTools.map(t => t.name));
+                    const extracted = extractToolCallsFromText(assistantMessage.content, validToolNames);
                     if (extracted.length > 0) {
                         assistantMessage.tool_calls = extracted;
-                        assistantMessage.content = cleanToolCallsFromText(assistantMessage.content);
+                        assistantMessage.content = cleanToolCallsFromText(assistantMessage.content, validToolNames);
                     }
                 }
             }
@@ -1523,9 +1525,9 @@ function isToolUnsupportedError(errorStr: string): boolean {
            lower.includes('bad request');
 }
 
-function extractToolCallsFromText(text: string): any[] {
+function extractToolCallsFromText(text: string, validToolNames?: Set<string>): any[] {
     const toolCalls: any[] = [];
-    const VALID_TOOL_NAMES = new Set(TOOLS.map(t => t.name));
+    const VALID_TOOL_NAMES = validToolNames || new Set(TOOLS.map(t => t.name));
     
     let idx = 0;
     while (true) {
@@ -1603,9 +1605,9 @@ function extractToolCallsFromText(text: string): any[] {
     return toolCalls;
 }
 
-function cleanToolCallsFromText(text: string): string {
+function cleanToolCallsFromText(text: string, validToolNames?: Set<string>): string {
     let cleanContent = text;
-    const VALID_TOOL_NAMES = new Set(TOOLS.map(t => t.name));
+    const VALID_TOOL_NAMES = validToolNames || new Set(TOOLS.map(t => t.name));
     const rangesToRemove: { start: number; end: number }[] = [];
 
     let idx = 0;

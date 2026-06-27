@@ -3652,4 +3652,36 @@ textarea::placeholder {
     color: var(--accent-red, #ff4d4f);
 }
 
+/* Settings Tabs */
+.settings-tabs-header {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 14px;
+    gap: 16px;
+    margin-bottom: 15px;
+}
+
+.settings-tab-btn {
+    background: none;
+    border: none;
+    padding: 8px 4px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+.settings-tab-btn:hover {
+    color: var(--text-primary);
+}
+
+.settings-tab-btn.active {
+    color: var(--accent-blue);
+    font-weight: 600;
+    border-bottom-color: var(--accent-blue);
+}
+
 

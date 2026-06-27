@@ -1481,6 +1481,25 @@
         });
     }
 
+    // --- SETTINGS TAB NAVIGATION ---
+    const settingsTabBtns = document.querySelectorAll('.settings-tab-btn');
+    const settingsTabPanels = document.querySelectorAll('.settings-tab-panel');
+
+    settingsTabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            settingsTabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            settingsTabPanels.forEach(panel => panel.classList.add('hidden'));
+            
+            const targetId = btn.getAttribute('data-target');
+            const targetPanel = document.getElementById(targetId);
+            if (targetPanel) {
+                targetPanel.classList.remove('hidden');
+            }
+        });
+    });
+
     if (autoExecutionSelect) {
         autoExecutionSelect.addEventListener('change', () => {
             vscode.postMessage({
@@ -1718,6 +1737,13 @@
             const clickedAddAiBtn = e.target.closest('#btn-add-ai');
             if (!addAiDrawer.contains(e.target) && !clickedAddModelDropdown && !clickedAddAiBtn) {
                 addAiDrawer.classList.add('hidden');
+            }
+        }
+        const addMcpDrawer = document.getElementById('add-mcp-drawer');
+        if (addMcpDrawer && !addMcpDrawer.classList.contains('hidden')) {
+            const clickedAddMcpBtn = e.target.closest('#btn-add-mcp');
+            if (!addMcpDrawer.contains(e.target) && !clickedAddMcpBtn) {
+                addMcpDrawer.classList.add('hidden');
             }
         }
     });
@@ -3813,6 +3839,107 @@
                     autocompleteTimeoutInputElement.value = autocompleteTimeoutVal.toString();
                 }
                 break;
+            case 'mcpServers': {
+                const mcpList = document.getElementById('mcp-servers-list');
+                if (mcpList) {
+                    mcpList.innerHTML = '';
+                    const servers = message.servers || {};
+                    const entries = Object.entries(servers);
+                    if (entries.length > 0) {
+                        entries.forEach(([name, server]) => {
+                            const item = document.createElement('div');
+                            item.className = 'configured-ai-item';
+                            item.style.display = 'flex';
+                            item.style.justifyContent = 'space-between';
+                            item.style.alignItems = 'center';
+                            item.style.padding = '8px 12px';
+                            item.style.background = 'var(--bg-secondary)';
+                            item.style.border = '1px solid var(--border-color)';
+                            item.style.borderRadius = '8px';
+
+                            const details = document.createElement('div');
+                            details.style.display = 'flex';
+                            details.style.flexDirection = 'column';
+                            details.style.gap = '2px';
+
+                            const nameEl = document.createElement('div');
+                            nameEl.style.fontWeight = '600';
+                            nameEl.style.fontSize = '12px';
+                            nameEl.style.color = 'var(--text-primary)';
+                            nameEl.textContent = name;
+
+                            const cmdEl = document.createElement('div');
+                            cmdEl.style.fontSize = '10px';
+                            cmdEl.style.color = 'var(--text-secondary)';
+                            cmdEl.style.fontFamily = 'monospace';
+                            cmdEl.style.whiteSpace = 'nowrap';
+                            cmdEl.style.overflow = 'hidden';
+                            cmdEl.style.textOverflow = 'ellipsis';
+                            cmdEl.style.maxWidth = '180px';
+                            cmdEl.textContent = `${server.command} ${(server.args || []).join(' ')}`;
+
+                            details.appendChild(nameEl);
+                            details.appendChild(cmdEl);
+
+                            const actions = document.createElement('div');
+                            actions.className = 'configured-ai-actions';
+                            actions.style.display = 'flex';
+                            actions.style.gap = '6px';
+                            actions.style.alignItems = 'center';
+
+                            // Edit button
+                            const editBtn = document.createElement('button');
+                            editBtn.type = 'button';
+                            editBtn.className = 'configured-ai-action-btn edit';
+                            editBtn.title = 'Edit';
+                            editBtn.innerHTML = `
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M12 20h9"></path>
+                                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                                </svg>
+                            `;
+                            editBtn.onclick = (e) => {
+                                e.stopPropagation();
+                                editMcpConfig(name, server);
+                            };
+
+                            // Delete button
+                            const deleteBtn = document.createElement('button');
+                            deleteBtn.type = 'button';
+                            deleteBtn.className = 'configured-ai-action-btn delete';
+                            deleteBtn.title = 'Delete';
+                            deleteBtn.innerHTML = `
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                </svg>
+                            `;
+                            deleteBtn.onclick = (e) => {
+                                e.stopPropagation();
+                                vscode.postMessage({
+                                    type: 'deleteMcpServer',
+                                    name: name
+                                });
+                            };
+
+                            actions.appendChild(editBtn);
+                            actions.appendChild(deleteBtn);
+
+                            item.appendChild(details);
+                            item.appendChild(actions);
+                            mcpList.appendChild(item);
+                        });
+                    } else {
+                        const emptyState = document.createElement('div');
+                        emptyState.className = 'settings-hint';
+                        emptyState.style.textAlign = 'center';
+                        emptyState.style.padding = '8px';
+                        emptyState.textContent = 'No MCP servers configured yet.';
+                        mcpList.appendChild(emptyState);
+                    }
+                }
+                break;
+            }
             case 'streamThought':
                 removeThinkingBubble();
                 appendThought(message.text, true, message.title);
@@ -4750,6 +4877,92 @@
         noModelsAddBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openAddAiDrawer();
+        });
+    }
+
+    // --- ADD MCP DRAWER LOGIC ---
+    const addMcpDrawer = document.getElementById('add-mcp-drawer');
+    const btnAddMcp = document.getElementById('btn-add-mcp');
+    const btnCloseAddMcp = document.getElementById('close-add-mcp-btn');
+    const btnSaveMcp = document.getElementById('btn-save-mcp');
+    const btnOpenMcpConfig = document.getElementById('btn-open-mcp-config');
+
+    if (btnOpenMcpConfig) {
+        btnOpenMcpConfig.addEventListener('click', () => {
+            vscode.postMessage({ type: 'openMcpConfig' });
+        });
+    }
+
+    function editMcpConfig(name, server) {
+        if (addMcpDrawer) {
+            const title = document.getElementById('add-mcp-drawer-title');
+            if (title) title.textContent = 'Edit MCP Connection';
+            
+            const nameInput = document.getElementById('add-mcp-name');
+            if (nameInput) {
+                nameInput.value = name;
+                nameInput.disabled = true;
+            }
+
+            document.getElementById('add-mcp-command').value = server.command || '';
+            document.getElementById('add-mcp-args').value = (server.args || []).join(', ') || '';
+            document.getElementById('add-mcp-env').value = server.env ? JSON.stringify(server.env, null, 2) : '';
+
+            addMcpDrawer.classList.remove('hidden');
+        }
+    }
+
+    if (btnAddMcp) {
+        btnAddMcp.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (addMcpDrawer) {
+                const title = document.getElementById('add-mcp-drawer-title');
+                if (title) title.textContent = 'Add MCP Connection';
+                const nameInput = document.getElementById('add-mcp-name');
+                if (nameInput) {
+                    nameInput.value = '';
+                    nameInput.disabled = false;
+                }
+                document.getElementById('add-mcp-command').value = '';
+                document.getElementById('add-mcp-args').value = '';
+                document.getElementById('add-mcp-env').value = '';
+                addMcpDrawer.classList.remove('hidden');
+            }
+        });
+    }
+
+    if (btnCloseAddMcp) {
+        btnCloseAddMcp.addEventListener('click', () => {
+            if (addMcpDrawer) {
+                addMcpDrawer.classList.add('hidden');
+            }
+        });
+    }
+
+    if (btnSaveMcp) {
+        btnSaveMcp.addEventListener('click', () => {
+            const nameInput = document.getElementById('add-mcp-name');
+            const name = nameInput ? nameInput.value.trim() : '';
+            const command = document.getElementById('add-mcp-command').value.trim();
+            const args = document.getElementById('add-mcp-args').value.trim();
+            const env = document.getElementById('add-mcp-env').value.trim();
+
+            if (!name || !command) {
+                alert('Please enter both Server Name and Command.');
+                return;
+            }
+
+            vscode.postMessage({
+                type: 'addMcpServer',
+                name: name,
+                command: command,
+                args: args,
+                env: env
+            });
+
+            if (addMcpDrawer) {
+                addMcpDrawer.classList.add('hidden');
+            }
         });
     }
 

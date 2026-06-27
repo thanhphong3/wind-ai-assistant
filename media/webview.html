@@ -318,8 +318,6 @@
                             <span class="toggle-icon">🔗</span>
                             <span class="toggle-text">Context</span>
                         </button>
-
-
                     </div>
                     
                     <div class="input-actions-right" style="display: flex; gap: 6px; align-items: center;">
@@ -363,78 +361,111 @@
                     </svg>
                 </button>
             </div>
-            <div class="drawer-content">
-                <div class="settings-group">
-                    <div class="settings-label">Auto Execution</div>
-                    <div class="select-wrapper">
-                        <select id="setting-auto-execution" class="settings-select">
-                            <option value="Ask for Approval">Ask for Approval</option>
-                            <option value="Always Proceed">Always Proceed</option>
-                        </select>
+            
+            <!-- Settings Tabs Header -->
+            <div class="settings-tabs-header">
+                <button class="settings-tab-btn active" data-target="settings-tab-general" type="button">General</button>
+                <button class="settings-tab-btn" data-target="settings-tab-providers" type="button">AI Providers</button>
+                <button class="settings-tab-btn" data-target="settings-tab-mcp" type="button">MCP Servers</button>
+            </div>
+
+            <div class="drawer-content" style="padding-top: 0;">
+                <!-- Tab: General -->
+                <div class="settings-tab-panel" id="settings-tab-general">
+                    <div class="settings-group" style="padding: 0 0 10px 0;">
+                        <div class="settings-label">Auto Execution</div>
+                        <div class="select-wrapper">
+                            <select id="setting-auto-execution" class="settings-select">
+                                <option value="Ask for Approval">Ask for Approval</option>
+                                <option value="Always Proceed">Always Proceed</option>
+                            </select>
+                        </div>
+                        <div class="settings-hint">If set to 'Always Proceed', commands and file modifications will run automatically without asking for approval.</div>
                     </div>
-                    <div class="settings-hint">If set to 'Always Proceed', commands and file modifications will run automatically without asking for approval.</div>
-                </div>
-                <div class="settings-group" style="margin-top: 15px;">
-                    <div class="settings-label">Auto Execute Plan</div>
-                    <div class="select-wrapper">
-                        <select id="setting-auto-execute-plan" class="settings-select">
-                            <option value="false">Disable</option>
-                            <option value="true">Enable</option>
-                        </select>
+                    <div class="settings-group" style="padding: 10px 0;">
+                        <div class="settings-label">Auto Execute Plan</div>
+                        <div class="select-wrapper">
+                            <select id="setting-auto-execute-plan" class="settings-select">
+                                <option value="false">Disable</option>
+                                <option value="true">Enable</option>
+                            </select>
+                        </div>
+                        <div class="settings-hint">If enabled, the agent will automatically begin executing the plan after generating it.</div>
                     </div>
-                    <div class="settings-hint">If enabled, the agent will automatically begin executing the plan after generating it.</div>
-                </div>
-                <div class="settings-group" style="margin-top: 15px;">
-                    <div class="settings-label">Preferred Browser</div>
-                    <div class="select-wrapper">
-                        <select id="setting-browser" class="settings-select">
-                            <option value="auto">Auto Detect</option>
-                            <option value="chrome">Google Chrome</option>
-                            <option value="edge">Microsoft Edge</option>
-                            <option value="firefox">Mozilla Firefox</option>
-                        </select>
+                    <div class="settings-group" style="padding: 10px 0;">
+                        <div class="settings-label">Preferred Browser</div>
+                        <div class="select-wrapper">
+                            <select id="setting-browser" class="settings-select">
+                                <option value="auto">Auto Detect</option>
+                                <option value="chrome">Google Chrome</option>
+                                <option value="edge">Microsoft Edge</option>
+                                <option value="firefox">Mozilla Firefox</option>
+                            </select>
+                        </div>
+                        <div class="settings-hint">Preferred browser for running web automation and testing.</div>
                     </div>
-                    <div class="settings-hint">Preferred browser for running web automation and testing.</div>
-                </div>
-                <div class="settings-group" style="margin-top: 15px;">
-                    <div class="settings-label">Inline Autocomplete</div>
-                    <div class="select-wrapper">
-                        <select id="setting-inline-autocomplete" class="settings-select">
-                            <option value="true">Enable</option>
-                            <option value="false">Disable</option>
-                        </select>
+                    <div class="settings-group" style="padding: 10px 0;">
+                        <div class="settings-label">Inline Autocomplete</div>
+                        <div class="select-wrapper">
+                            <select id="setting-inline-autocomplete" class="settings-select">
+                                <option value="true">Enable</option>
+                                <option value="false">Disable</option>
+                            </select>
+                        </div>
+                        <div class="settings-hint">Enable or disable inline code completions (ghost text) as you type.</div>
                     </div>
-                    <div class="settings-hint">Enable or disable inline code completions (ghost text) as you type.</div>
-                </div>
-                <div class="settings-group" style="margin-top: 15px;">
-                    <div class="settings-label">Autocomplete Model</div>
-                    <div class="select-wrapper">
-                        <select id="setting-inline-autocomplete-model" class="settings-select">
-                            <!-- Dynamically populated -->
-                        </select>
+                    <div class="settings-group" style="padding: 10px 0;">
+                        <div class="settings-label">Autocomplete Model</div>
+                        <div class="select-wrapper">
+                            <select id="setting-inline-autocomplete-model" class="settings-select">
+                                <!-- Dynamically populated -->
+                            </select>
+                        </div>
+                        <div class="settings-hint">Select the model specifically used for inline completions.</div>
                     </div>
-                    <div class="settings-hint">Select the model specifically used for inline completions.</div>
+                    <div class="settings-group" style="padding: 10px 0 20px 0;">
+                        <div class="settings-label">Autocomplete Timeout (ms)</div>
+                        <input type="number" id="setting-inline-autocomplete-timeout" class="settings-input" min="1000" step="1000">
+                        <div class="settings-hint">Timeout in milliseconds for inline code completion requests.</div>
+                    </div>
                 </div>
-                <div class="settings-group" style="margin-top: 15px;">
-                    <div class="settings-label">Autocomplete Timeout (ms)</div>
-                    <input type="number" id="setting-inline-autocomplete-timeout" class="settings-input" min="1000" step="1000">
-                    <div class="settings-hint">Timeout in milliseconds for inline code completion requests.</div>
+
+                <!-- Tab: AI Providers -->
+                <div class="settings-tab-panel hidden" id="settings-tab-providers">
+                    <div class="settings-group" style="padding: 0 0 10px 0;">
+                        <button class="settings-action-btn" id="btn-open-config" type="button">
+                            Open Configuration (ai_config.json)
+                        </button>
+                    </div>
+                    <div class="settings-group" style="padding: 10px 0 20px 0;">
+                        <button class="settings-action-btn" id="btn-add-ai" style="background: var(--accent-blue); color: white; border: none; font-weight: 600;" type="button">
+                            ➕ Add AI Provider
+                        </button>
+                    </div>
+                    
+                    <div class="settings-group" style="padding: 15px 0 20px 0; border-top: 1px solid var(--border-color);">
+                        <div class="settings-label" style="margin-bottom: 10px;">Configured AIs</div>
+                        <div id="configured-ais-list" style="display: flex; flex-direction: column; gap: 8px;">
+                            <!-- Dynamically populated list of configured AIs -->
+                        </div>
+                    </div>
                 </div>
-                <div class="settings-group" style="margin-top: 10px;">
-                    <button class="settings-action-btn" id="btn-open-config">
-                        Open Configuration (ai_config.json)
-                    </button>
-                </div>
-                <div class="settings-group" style="margin-top: 10px;">
-                    <button class="settings-action-btn" id="btn-add-ai" style="background: var(--accent-blue); color: white; border: none; font-weight: 600;">
-                        ➕ Add AI Provider
-                    </button>
-                </div>
-                
-                <div class="settings-group" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 15px;">
-                    <div class="settings-label" style="margin-bottom: 10px;">Configured AIs</div>
-                    <div id="configured-ais-list" style="display: flex; flex-direction: column; gap: 8px;">
-                        <!-- Dynamically populated list of configured AIs -->
+
+                <!-- Tab: MCP Connections -->
+                <div class="settings-tab-panel hidden" id="settings-tab-mcp">
+                    <div class="settings-group" style="padding: 0 0 15px 0;">
+                        <button class="settings-action-btn" id="btn-open-mcp-config" type="button">
+                            Open MCP Configuration (mcp_config.json)
+                        </button>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                        <div class="settings-label" style="margin: 0;">MCP Servers</div>
+                        <button class="settings-action-btn" id="btn-add-mcp" style="background: var(--accent-blue); color: white; border: none; font-weight: 600; width: auto; padding: 4px 10px; font-size: 11px; margin: 0;" type="button">
+                            ➕ Add MCP
+                        </button>
+                    </div>
+                    <div id="mcp-servers-list" style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Dynamically populated list of MCP servers -->
                     </div>
                 </div>
             </div>
@@ -532,6 +563,49 @@
                 </div>
             </div>
         </div>
+
+        <!-- Add MCP Drawer -->
+        <div class="settings-drawer hidden" id="add-mcp-drawer">
+            <div class="drawer-header">
+                <h3 id="add-mcp-drawer-title">Add MCP Connection</h3>
+                <button class="close-drawer-btn" id="close-add-mcp-btn" title="Close" type="button">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="drawer-content">
+                <div style="display: flex; flex-direction: column; gap: 15px; padding-bottom: 20px;">
+                    <div class="settings-group">
+                        <div class="settings-label">Server Name</div>
+                        <input type="text" id="add-mcp-name" class="settings-input" placeholder="e.g. unity-mcp">
+                    </div>
+
+                    <div class="settings-group">
+                        <div class="settings-label">Command / Executable Path</div>
+                        <input type="text" id="add-mcp-command" class="settings-input" placeholder="e.g. npx, python, or absolute path">
+                    </div>
+
+                    <div class="settings-group">
+                        <div class="settings-label">Arguments (comma-separated)</div>
+                        <input type="text" id="add-mcp-args" class="settings-input" placeholder="e.g. -y, @modelcontextprotocol/server-everything, --mcp">
+                    </div>
+
+                    <div class="settings-group">
+                        <div class="settings-label">Environment Variables (JSON, optional)</div>
+                        <textarea id="add-mcp-env" class="settings-input" rows="3" placeholder='e.g. { "UNITY_PATH": "..." }' style="resize: vertical; font-family: monospace; font-size: 11px;"></textarea>
+                    </div>
+
+                    <div class="settings-group" style="margin-top: 10px; margin-bottom: 20px;">
+                        <button class="settings-action-btn" id="btn-save-mcp" type="button" style="background: var(--accent-blue); color: white; border: none; font-weight: 600;">
+                            Save MCP Server
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
         <!-- Custom Context Menu for Files -->
         <div id="custom-context-menu" class="custom-context-menu hidden">
             <div class="context-menu-item" id="ctx-open-diff">
@@ -572,9 +646,17 @@
     <!-- Ask Question Modal -->
     <div class="modal-overlay hidden" id="question-modal">
         <div class="modal-card">
-            <div class="modal-header">
-                <span class="modal-title-icon">❓</span>
-                <h3 id="question-modal-title">Clarification Required</h3>
+            <div class="modal-header" style="justify-content: space-between; width: 100%; box-sizing: border-box;">
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                    <span class="modal-title-icon">❓</span>
+                    <h3 id="question-modal-title" style="margin: 0;">Clarification Required</h3>
+                </div>
+                <button class="close-drawer-btn" id="close-question-modal-btn" title="Close" type="button">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
             <div class="modal-body">
                 <p id="question-modal-text"></p>

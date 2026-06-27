@@ -8,6 +8,7 @@ import * as crypto from 'crypto';
 import * as os from 'os';
 import puppeteer, { Browser, Page } from 'puppeteer-core';
 import { StringDecoder } from 'string_decoder';
+import { McpManager } from './mcp';
 
 const execAsync = promisify(exec);
 
@@ -717,6 +718,8 @@ class ConcurrencyLimiter {
 }
 
 export class ToolsManager {
+    private static activeMcpManagers = new Set<McpManager>();
+    public mcpManager: McpManager;
     private static activeCommands = new Map<string, {
         process: ChildProcess;
         outputBuffer: string;
@@ -761,6 +764,15 @@ export class ToolsManager {
     public static async dispose() {
         const timeoutPromise = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
         
+        for (const mcp of ToolsManager.activeMcpManagers) {
+            try {
+                await mcp.dispose();
+            } catch (e) {
+                // Ignore
+            }
+        }
+        ToolsManager.activeMcpManagers.clear();
+
         if (ToolsManager.browser) {
             try {
                 // Wrap browser close in a 2-second timeout
@@ -819,7 +831,35 @@ export class ToolsManager {
         this.model = model;
     }
 
-    constructor(private workspaceRoot: string) {}
+    constructor(private workspaceRoot: string) {
+        this.mcpManager = new McpManager(workspaceRoot);
+        ToolsManager.activeMcpManagers.add(this.mcpManager);
+    }
+
+    public async initializeMcp(): Promise<void> {
+        await this.mcpManager.initialize();
+    }
+
+    public getAvailableTools() {
+        const mcpTools = this.mcpManager.getTools().map(t => ({
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters as any
+        }));
+        return [...TOOLS, ...mcpTools];
+    }
+
+    public async getMcpServers() {
+        return await this.mcpManager.getMcpServers();
+    }
+
+    public async addMcpServer(name: string, config: any) {
+        await this.mcpManager.addMcpServer(name, config);
+    }
+
+    public async deleteMcpServer(name: string) {
+        await this.mcpManager.deleteMcpServer(name);
+    }
 
     private resolvePath(relativePath: string): string {
         const cleanRelative = relativePath.replace(/^[/\\]+/, '');
@@ -839,6 +879,9 @@ export class ToolsManager {
     async executeTool(name: string, args: any, signal?: AbortSignal): Promise<string> {
         if (signal?.aborted) {
             throw new Error('Cancelled by user');
+        }
+        if (this.mcpManager.hasTool(name)) {
+            return await this.mcpManager.callTool(name, args);
         }
         switch (name) {
             case 'listFiles':

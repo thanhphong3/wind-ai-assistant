@@ -528,6 +528,11 @@
         if (messageInput) messageInput.disabled = true;
         if (sendButton) sendButton.disabled = true;
 
+        const modalTitle = document.getElementById('question-modal-title');
+        if (modalTitle) {
+            modalTitle.textContent = args.title || 'Clarification Required';
+        }
+
         modalText.innerHTML = formatMarkdown(question);
         optionsContainer.innerHTML = '';
         if (writeInInput) {
@@ -624,6 +629,217 @@
                 toolId: toolId,
                 answer: answers
             });
+        };
+    }
+
+    // Close Question Modal listener
+    const closeQuestionModalBtn = document.getElementById('close-question-modal-btn');
+    if (closeQuestionModalBtn) {
+        closeQuestionModalBtn.addEventListener('click', () => {
+            const modal = document.getElementById('question-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+            if (messageInput) messageInput.disabled = false;
+            if (sendButton) {
+                sendButton.disabled = messageInput.value.trim() === '';
+            }
+        });
+    }
+
+    function detectAndParseOptions(text) {
+        if (!text) return null;
+        
+        const textLower = text.toLowerCase();
+        const choicePhrases = [
+            'choose', 'select', 'option', 'which', 'what would you', 'would you like', 'what should I', 'your choice',
+            'chọn', 'lựa chọn', 'phương án', 'hướng nào', 'bạn muốn', 'hãy cho tôi biết', 'bạn chọn'
+        ];
+        const hasQuestionMark = text.includes('?');
+        const hasChoiceKeyword = choicePhrases.some(phrase => textLower.includes(phrase));
+        
+        if (!hasQuestionMark && !hasChoiceKeyword) {
+            return null;
+        }
+
+        const lines = text.split('\n');
+        const options = [];
+        let optionStartIndex = -1;
+        let expectedNextNumber = 1;
+        let inCodeBlock = false;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            if (line.startsWith('```')) {
+                inCodeBlock = !inCodeBlock;
+                continue;
+            }
+            if (inCodeBlock) continue;
+
+            let cleanLine = line;
+            cleanLine = cleanLine.replace(/^\*\*(\d+)\.\*\*/, '$1.'); 
+            cleanLine = cleanLine.replace(/^\*\*(\d+)\*\*/, '$1.');   
+            cleanLine = cleanLine.replace(/^__(\d+)\.__/, '$1.');     
+            cleanLine = cleanLine.replace(/^__(\d+)__/, '$1.');       
+            cleanLine = cleanLine.replace(/^\*(\d+)\.\*/, '$1.');     
+            cleanLine = cleanLine.replace(/^\*(\d+)\*/, '$1.');       
+
+            const match = cleanLine.match(/^\[?(\d+)\]?[\.\)\-\:\s]\s*(.+)$/);
+            if (match) {
+                const num = parseInt(match[1], 10);
+                if (num === expectedNextNumber) {
+                    if (optionStartIndex === -1) {
+                        optionStartIndex = i;
+                    }
+                    options.push({
+                        number: num,
+                        text: match[2].trim(),
+                        originalIndex: i
+                    });
+                    expectedNextNumber++;
+                } else if (num === 1 && options.length > 0) {
+                    if (options.length >= 2) {
+                        break;
+                    } else {
+                        options.length = 0;
+                        options.push({
+                            number: num,
+                            text: match[2].trim(),
+                            originalIndex: i
+                        });
+                        optionStartIndex = i;
+                        expectedNextNumber = 2;
+                    }
+                }
+            }
+        }
+
+        if (options.length < 2) {
+            return null;
+        }
+
+        const introLines = [];
+        for (let i = 0; i < optionStartIndex; i++) {
+            const line = lines[i].trim();
+            if (line.startsWith('```')) continue;
+            if (line) {
+                introLines.push(line);
+            }
+        }
+        const question = introLines.join('\n\n') || "Please select one of the following options:";
+
+        return {
+            question: question,
+            options: options.map(o => o.text),
+            rawOptions: options
+        };
+    }
+
+    function checkAndShowMessageOptions(text) {
+        const parsed = detectAndParseOptions(text);
+        if (!parsed) return;
+
+        const { question, options } = parsed;
+
+        const modal = document.getElementById('question-modal');
+        const modalText = document.getElementById('question-modal-text');
+        const optionsContainer = document.getElementById('question-modal-options');
+        const submitBtn = document.getElementById('question-modal-submit');
+        const writeInInput = document.getElementById('question-modal-write-in');
+
+        if (!modal || !modalText || !optionsContainer || !submitBtn) return;
+
+        if (messageInput) messageInput.disabled = true;
+        if (sendButton) sendButton.disabled = true;
+
+        const modalTitle = document.getElementById('question-modal-title');
+        if (modalTitle) {
+            modalTitle.textContent = 'Select an Option';
+        }
+
+        modalText.innerHTML = formatMarkdown(question);
+        optionsContainer.innerHTML = '';
+        if (writeInInput) {
+            writeInInput.value = '';
+        }
+
+        const selectedOptions = new Set();
+
+        options.forEach((optText, optIdx) => {
+            const row = document.createElement('div');
+            row.className = 'option-row';
+            
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.name = 'ask-question-option';
+            input.className = 'option-input';
+            
+            const num = parsed.rawOptions[optIdx].number;
+            const fullOptText = `${num}. ${optText}`;
+            input.value = fullOptText;
+            input.id = `opt-input-${optIdx}`;
+
+            const label = document.createElement('label');
+            label.className = 'option-label';
+            label.setAttribute('for', `opt-input-${optIdx}`);
+            label.textContent = fullOptText;
+
+            row.appendChild(input);
+            row.appendChild(label);
+
+            const toggleSelect = () => {
+                optionsContainer.querySelectorAll('.option-row').forEach(r => r.classList.remove('selected'));
+                optionsContainer.querySelectorAll('.option-input').forEach(i => i.checked = false);
+                input.checked = true;
+                row.classList.add('selected');
+                selectedOptions.clear();
+                selectedOptions.add(fullOptText);
+            };
+
+            row.onclick = (e) => {
+                if (e.target === input || e.target === label) return;
+                toggleSelect();
+            };
+
+            input.onchange = () => {
+                optionsContainer.querySelectorAll('.option-row').forEach(r => r.classList.remove('selected'));
+                row.classList.add('selected');
+                selectedOptions.clear();
+                selectedOptions.add(fullOptText);
+            };
+
+            optionsContainer.appendChild(row);
+        });
+
+        modal.classList.remove('hidden');
+
+        submitBtn.onclick = () => {
+            const writeInVal = writeInInput ? writeInInput.value.trim() : '';
+            if (selectedOptions.size === 0 && !writeInVal) {
+                return;
+            }
+            
+            modal.classList.add('hidden');
+            
+            if (messageInput) messageInput.disabled = false;
+            if (sendButton) sendButton.disabled = false;
+
+            let finalAnswer = '';
+            if (writeInVal) {
+                finalAnswer = writeInVal;
+            } else if (selectedOptions.size > 0) {
+                finalAnswer = Array.from(selectedOptions)[0];
+            }
+
+            if (finalAnswer) {
+                messageInput.value = finalAnswer;
+                messageInput.style.height = 'auto';
+                messageInput.style.height = (messageInput.scrollHeight) + 'px';
+                sendButton.disabled = false;
+                sendMessage();
+            }
         };
     }
 
@@ -1265,6 +1481,25 @@
         });
     }
 
+    // --- SETTINGS TAB NAVIGATION ---
+    const settingsTabBtns = document.querySelectorAll('.settings-tab-btn');
+    const settingsTabPanels = document.querySelectorAll('.settings-tab-panel');
+
+    settingsTabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            settingsTabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            settingsTabPanels.forEach(panel => panel.classList.add('hidden'));
+            
+            const targetId = btn.getAttribute('data-target');
+            const targetPanel = document.getElementById(targetId);
+            if (targetPanel) {
+                targetPanel.classList.remove('hidden');
+            }
+        });
+    });
+
     if (autoExecutionSelect) {
         autoExecutionSelect.addEventListener('change', () => {
             vscode.postMessage({
@@ -1502,6 +1737,13 @@
             const clickedAddAiBtn = e.target.closest('#btn-add-ai');
             if (!addAiDrawer.contains(e.target) && !clickedAddModelDropdown && !clickedAddAiBtn) {
                 addAiDrawer.classList.add('hidden');
+            }
+        }
+        const addMcpDrawer = document.getElementById('add-mcp-drawer');
+        if (addMcpDrawer && !addMcpDrawer.classList.contains('hidden')) {
+            const clickedAddMcpBtn = e.target.closest('#btn-add-mcp');
+            if (!addMcpDrawer.contains(e.target) && !clickedAddMcpBtn) {
+                addMcpDrawer.classList.add('hidden');
             }
         }
     });
@@ -3597,6 +3839,107 @@
                     autocompleteTimeoutInputElement.value = autocompleteTimeoutVal.toString();
                 }
                 break;
+            case 'mcpServers': {
+                const mcpList = document.getElementById('mcp-servers-list');
+                if (mcpList) {
+                    mcpList.innerHTML = '';
+                    const servers = message.servers || {};
+                    const entries = Object.entries(servers);
+                    if (entries.length > 0) {
+                        entries.forEach(([name, server]) => {
+                            const item = document.createElement('div');
+                            item.className = 'configured-ai-item';
+                            item.style.display = 'flex';
+                            item.style.justifyContent = 'space-between';
+                            item.style.alignItems = 'center';
+                            item.style.padding = '8px 12px';
+                            item.style.background = 'var(--bg-secondary)';
+                            item.style.border = '1px solid var(--border-color)';
+                            item.style.borderRadius = '8px';
+
+                            const details = document.createElement('div');
+                            details.style.display = 'flex';
+                            details.style.flexDirection = 'column';
+                            details.style.gap = '2px';
+
+                            const nameEl = document.createElement('div');
+                            nameEl.style.fontWeight = '600';
+                            nameEl.style.fontSize = '12px';
+                            nameEl.style.color = 'var(--text-primary)';
+                            nameEl.textContent = name;
+
+                            const cmdEl = document.createElement('div');
+                            cmdEl.style.fontSize = '10px';
+                            cmdEl.style.color = 'var(--text-secondary)';
+                            cmdEl.style.fontFamily = 'monospace';
+                            cmdEl.style.whiteSpace = 'nowrap';
+                            cmdEl.style.overflow = 'hidden';
+                            cmdEl.style.textOverflow = 'ellipsis';
+                            cmdEl.style.maxWidth = '180px';
+                            cmdEl.textContent = `${server.command} ${(server.args || []).join(' ')}`;
+
+                            details.appendChild(nameEl);
+                            details.appendChild(cmdEl);
+
+                            const actions = document.createElement('div');
+                            actions.className = 'configured-ai-actions';
+                            actions.style.display = 'flex';
+                            actions.style.gap = '6px';
+                            actions.style.alignItems = 'center';
+
+                            // Edit button
+                            const editBtn = document.createElement('button');
+                            editBtn.type = 'button';
+                            editBtn.className = 'configured-ai-action-btn edit';
+                            editBtn.title = 'Edit';
+                            editBtn.innerHTML = `
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M12 20h9"></path>
+                                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                                </svg>
+                            `;
+                            editBtn.onclick = (e) => {
+                                e.stopPropagation();
+                                editMcpConfig(name, server);
+                            };
+
+                            // Delete button
+                            const deleteBtn = document.createElement('button');
+                            deleteBtn.type = 'button';
+                            deleteBtn.className = 'configured-ai-action-btn delete';
+                            deleteBtn.title = 'Delete';
+                            deleteBtn.innerHTML = `
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                </svg>
+                            `;
+                            deleteBtn.onclick = (e) => {
+                                e.stopPropagation();
+                                vscode.postMessage({
+                                    type: 'deleteMcpServer',
+                                    name: name
+                                });
+                            };
+
+                            actions.appendChild(editBtn);
+                            actions.appendChild(deleteBtn);
+
+                            item.appendChild(details);
+                            item.appendChild(actions);
+                            mcpList.appendChild(item);
+                        });
+                    } else {
+                        const emptyState = document.createElement('div');
+                        emptyState.className = 'settings-hint';
+                        emptyState.style.textAlign = 'center';
+                        emptyState.style.padding = '8px';
+                        emptyState.textContent = 'No MCP servers configured yet.';
+                        mcpList.appendChild(emptyState);
+                    }
+                }
+                break;
+            }
             case 'streamThought':
                 removeThinkingBubble();
                 appendThought(message.text, true, message.title);
@@ -3660,9 +4003,13 @@
                         appendMessage('agent', cleanText, false, message.index, message.images, message.contextItems);
                     }
                     isStreaming = false;
+                    checkAndShowMessageOptions(cleanText);
                 } else {
                     removeThinkingBubble();
                     appendMessage(message.sender, cleanText, false, message.index, message.images, message.contextItems);
+                    if (message.sender === 'agent') {
+                        checkAndShowMessageOptions(cleanText);
+                    }
                 }
 
                 if (planBlock) {
@@ -4530,6 +4877,92 @@
         noModelsAddBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openAddAiDrawer();
+        });
+    }
+
+    // --- ADD MCP DRAWER LOGIC ---
+    const addMcpDrawer = document.getElementById('add-mcp-drawer');
+    const btnAddMcp = document.getElementById('btn-add-mcp');
+    const btnCloseAddMcp = document.getElementById('close-add-mcp-btn');
+    const btnSaveMcp = document.getElementById('btn-save-mcp');
+    const btnOpenMcpConfig = document.getElementById('btn-open-mcp-config');
+
+    if (btnOpenMcpConfig) {
+        btnOpenMcpConfig.addEventListener('click', () => {
+            vscode.postMessage({ type: 'openMcpConfig' });
+        });
+    }
+
+    function editMcpConfig(name, server) {
+        if (addMcpDrawer) {
+            const title = document.getElementById('add-mcp-drawer-title');
+            if (title) title.textContent = 'Edit MCP Connection';
+            
+            const nameInput = document.getElementById('add-mcp-name');
+            if (nameInput) {
+                nameInput.value = name;
+                nameInput.disabled = true;
+            }
+
+            document.getElementById('add-mcp-command').value = server.command || '';
+            document.getElementById('add-mcp-args').value = (server.args || []).join(', ') || '';
+            document.getElementById('add-mcp-env').value = server.env ? JSON.stringify(server.env, null, 2) : '';
+
+            addMcpDrawer.classList.remove('hidden');
+        }
+    }
+
+    if (btnAddMcp) {
+        btnAddMcp.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (addMcpDrawer) {
+                const title = document.getElementById('add-mcp-drawer-title');
+                if (title) title.textContent = 'Add MCP Connection';
+                const nameInput = document.getElementById('add-mcp-name');
+                if (nameInput) {
+                    nameInput.value = '';
+                    nameInput.disabled = false;
+                }
+                document.getElementById('add-mcp-command').value = '';
+                document.getElementById('add-mcp-args').value = '';
+                document.getElementById('add-mcp-env').value = '';
+                addMcpDrawer.classList.remove('hidden');
+            }
+        });
+    }
+
+    if (btnCloseAddMcp) {
+        btnCloseAddMcp.addEventListener('click', () => {
+            if (addMcpDrawer) {
+                addMcpDrawer.classList.add('hidden');
+            }
+        });
+    }
+
+    if (btnSaveMcp) {
+        btnSaveMcp.addEventListener('click', () => {
+            const nameInput = document.getElementById('add-mcp-name');
+            const name = nameInput ? nameInput.value.trim() : '';
+            const command = document.getElementById('add-mcp-command').value.trim();
+            const args = document.getElementById('add-mcp-args').value.trim();
+            const env = document.getElementById('add-mcp-env').value.trim();
+
+            if (!name || !command) {
+                alert('Please enter both Server Name and Command.');
+                return;
+            }
+
+            vscode.postMessage({
+                type: 'addMcpServer',
+                name: name,
+                command: command,
+                args: args,
+                env: env
+            });
+
+            if (addMcpDrawer) {
+                addMcpDrawer.classList.add('hidden');
+            }
         });
     }
 

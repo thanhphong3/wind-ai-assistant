@@ -557,6 +557,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                         inlineCompletionModel,
                         inlineCompletionTimeout
                     });
+                    await this._sendMcpServers();
                     await this._syncModifiedFilesFromBackup();
                     await this._sendWorkspaceFiles();
                     this._sendPermissionsToWebview();
@@ -578,6 +579,61 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                         inlineCompletionModel,
                         inlineCompletionTimeout
                     });
+                    await this._sendMcpServers();
+                    break;
+                }
+                case 'getMcpServers': {
+                    await this._sendMcpServers();
+                    break;
+                }
+                case 'addMcpServer': {
+                    const workspaceFolders = vscode.workspace.workspaceFolders;
+                    if (workspaceFolders && workspaceFolders.length > 0) {
+                        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+                        const manager = this._agent ? this._agent.toolsManager : new ToolsManager(workspaceRoot);
+                        try {
+                            const argsArray = data.args ? data.args.split(',').map((a: string) => a.trim()).filter((a: string) => a) : [];
+                            let envObj = undefined;
+                            if (data.env) {
+                                try {
+                                    envObj = JSON.parse(data.env);
+                                } catch (e) {
+                                    // Ignore
+                                }
+                            }
+                            await manager.addMcpServer(data.name, {
+                                command: data.command,
+                                args: argsArray,
+                                env: envObj
+                            });
+                            await this._sendMcpServers();
+                            vscode.window.showInformationMessage(`MCP Server "${data.name}" added successfully.`);
+                        } catch (err: any) {
+                            vscode.window.showErrorMessage(`Failed to add MCP Server: ${err.message}`);
+                        }
+                    }
+                    break;
+                }
+                case 'deleteMcpServer': {
+                    const workspaceFolders = vscode.workspace.workspaceFolders;
+                    if (workspaceFolders && workspaceFolders.length > 0) {
+                        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+                        const manager = this._agent ? this._agent.toolsManager : new ToolsManager(workspaceRoot);
+                        try {
+                            const confirmDelete = await vscode.window.showWarningMessage(
+                                `Are you sure you want to delete the MCP Server "${data.name}"?`,
+                                { modal: true },
+                                'Delete'
+                            );
+                            if (confirmDelete === 'Delete') {
+                                await manager.deleteMcpServer(data.name);
+                                await this._sendMcpServers();
+                                vscode.window.showInformationMessage(`MCP Server "${data.name}" deleted successfully.`);
+                            }
+                        } catch (err: any) {
+                            vscode.window.showErrorMessage(`Failed to delete MCP Server: ${err.message}`);
+                        }
+                    }
                     break;
                 }
                 case 'updateSetting': {
@@ -599,6 +655,9 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                 }
                 case 'openConfig':
                     await this.openConfigFile();
+                    break;
+                case 'openMcpConfig':
+                    await this.openMcpConfigFile();
                     break;
                 case 'clear':
                     this._activeSessionId = undefined;
@@ -1987,6 +2046,48 @@ ${errorCode}
             await vscode.window.showTextDocument(doc);
         } catch (err: any) {
             vscode.window.showErrorMessage(`Cannot open configuration file: ${err.message}`);
+        }
+    }
+
+    public async openMcpConfigFile() {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        let mcpPath = '';
+        if (workspaceFolders && workspaceFolders.length > 0) {
+            const workspaceRoot = workspaceFolders[0].uri.fsPath;
+            const wsPath = path.join(workspaceRoot, '.vscode', 'mcp_config.json');
+            const rootPath = path.join(workspaceRoot, 'mcp_config.json');
+            if (fs.existsSync(wsPath)) {
+                mcpPath = wsPath;
+            } else if (fs.existsSync(rootPath)) {
+                mcpPath = rootPath;
+            } else {
+                try {
+                    await fs.promises.mkdir(path.dirname(wsPath), { recursive: true });
+                    if (!fs.existsSync(wsPath)) {
+                        await fs.promises.writeFile(wsPath, JSON.stringify({ mcpServers: {} }, null, 2), 'utf8');
+                    }
+                    mcpPath = wsPath;
+                } catch (e) {
+                    mcpPath = rootPath;
+                }
+            }
+        } else {
+            mcpPath = path.join(os.homedir(), '.gemini', 'antigravity-ide', 'mcp_config.json');
+            try {
+                await fs.promises.mkdir(path.dirname(mcpPath), { recursive: true });
+                if (!fs.existsSync(mcpPath)) {
+                    await fs.promises.writeFile(mcpPath, JSON.stringify({ mcpServers: {} }, null, 2), 'utf8');
+                }
+            } catch (e) {
+                // Ignore
+            }
+        }
+
+        try {
+            const doc = await vscode.workspace.openTextDocument(mcpPath);
+            await vscode.window.showTextDocument(doc);
+        } catch (err: any) {
+            vscode.window.showErrorMessage(`Cannot open MCP configuration file: ${err.message}`);
         }
     }
 
@@ -3641,5 +3742,23 @@ IMPORTANT rules:
             }
         }
         throw lastError || new Error('All API Keys failed for self-healing fix.');
+    }
+
+    private async _sendMcpServers() {
+        if (!this._view) return;
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0) {
+            const workspaceRoot = workspaceFolders[0].uri.fsPath;
+            const manager = this._agent ? this._agent.toolsManager : new ToolsManager(workspaceRoot);
+            try {
+                const servers = await manager.getMcpServers();
+                this._view.webview.postMessage({
+                    type: 'mcpServers',
+                    servers
+                });
+            } catch (err: any) {
+                console.error('Failed to get MCP servers:', err);
+            }
+        }
     }
 }
