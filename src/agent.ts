@@ -135,7 +135,7 @@ export class Agent {
             
             const toolsListStr = selectedToolsForInstructions.map(t => {
                 const params = Object.entries(t.parameters.properties).map(([name, prop]: [string, any]) => {
-                    const req = t.parameters.required.includes(name) ? 'required' : 'optional';
+                    const req = (t.parameters.required && t.parameters.required.includes(name)) ? 'required' : 'optional';
                     return `"${name}": ${prop.type} (${req}, ${prop.description || ''})`;
                 }).join(', ');
                 return `- ${t.name}: { ${params} }`;
@@ -463,12 +463,12 @@ ${userQuery}`;
             }
             loopCount++;
 
-            let selectedTools = this.toolsManager ? this.toolsManager.getAvailableTools() : TOOLS;
-            if (forceNonTool || mode === 'chat') {
-                selectedTools = [];
+            let allowedTools = this.toolsManager ? this.toolsManager.getAvailableTools() : TOOLS;
+            if (mode === 'chat') {
+                allowedTools = [];
             } else if (mode === 'plan' || mode === 'grill') {
                 // Plan and grill modes only allow read-only tools
-                selectedTools = selectedTools.filter(t => 
+                allowedTools = allowedTools.filter(t => 
                     t.name === 'listFiles' ||
                     t.name === 'listDir' ||
                     t.name === 'readFile' ||
@@ -480,7 +480,7 @@ ${userQuery}`;
                 );
             }
 
-            const formattedTools = selectedTools.map(t => ({
+            const formattedTools = (forceNonTool || mode === 'chat') ? [] : allowedTools.map(t => ({
                 type: 'function',
                 function: {
                     name: t.name,
@@ -492,7 +492,7 @@ ${userQuery}`;
             // Call LLM using streaming approach
             let assistantMessage;
             try {
-                assistantMessage = await this.callLLMStream(formattedTools);
+                assistantMessage = await this.callLLMStream(formattedTools, forceNonTool, allowedTools);
             } catch (err: any) {
                 if (!forceNonTool && formattedTools.length > 0 && isToolUnsupportedError(err.message)) {
                     this.callbacks.onLog('[System] Tool calling not supported by the model/endpoint. Retrying with text-based tool fallback...');
@@ -520,16 +520,17 @@ ${userQuery}`;
                 if (this.messages[0] && this.messages[0].role === 'system') {
                     this.messages[0].content = newPrompt;
                 }
-                assistantMessage = await this.callLLMStream([]);
+                assistantMessage = await this.callLLMStream([], forceNonTool, allowedTools);
             }
 
             // Check for text-based tool calls if no native tool calls were returned
             if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
                 if (assistantMessage.content) {
-                    const validToolNames = new Set(selectedTools.map(t => t.name));
+                    const validToolNames = new Set<string>(allowedTools.map((t: any) => t.name));
                     const extracted = extractToolCallsFromText(assistantMessage.content, validToolNames);
                     if (extracted.length > 0) {
                         assistantMessage.tool_calls = extracted;
+                        // Clean the JSON block from assistantMessage.content now that the tool calls are extracted
                         assistantMessage.content = cleanToolCallsFromText(assistantMessage.content, validToolNames);
                     }
                 }
@@ -697,7 +698,7 @@ ${userQuery}`;
         return '⚠️ Warning: Agent reached maximum loop count (' + maxLoops + ') and was stopped.\nReached maximum reasoning steps limit.';
     }
 
-    private async callLLMStream(tools: any[]): Promise<any> {
+    private async callLLMStream(tools: any[], forceNonTool: boolean, allowedTools: any[]): Promise<any> {
         // Sanitize messages: ensure all assistant tool call arguments are valid JSON to prevent 400 Bad Request errors
         for (const msg of this.messages) {
             if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
@@ -875,7 +876,7 @@ ${userQuery}`;
                 const MAX_STREAM_BUFFER = 500000; // 500KB safety limit
 
                 // Throttle parsePartialJSON to avoid O(n²) re-parsing on every chunk
-                const lastToolStreamTimes = new Map<number, number>();
+                const lastToolStreamTimes = new Map<string | number, number>();
                 const TOOL_STREAM_THROTTLE_MS = 300;
 
                 // Helper to process a single SSE line
@@ -922,12 +923,98 @@ ${userQuery}`;
                                     // Smart buffering: if we see '{', start buffering to prevent
                                     // tool call JSON from being rendered directly in the chat UI.
                                     if (!streamHoldActive && delta.content.includes('{')) {
-                                        streamHoldActive = true;
+                                        // Check if we are inside a markdown code block.
+                                        // If we are, this is code text, not a tool call.
+                                        const matches = fullContent.match(/```/g);
+                                        const inCodeBlock = matches ? matches.length % 2 !== 0 : false;
+                                        if (!inCodeBlock) {
+                                            streamHoldActive = true;
+                                        }
                                     }
                                     if (streamHoldActive) {
                                         streamHoldBuffer += delta.content;
+                                        
+                                        // Check if we should flush early (e.g. if buffer contains a markdown code block,
+                                        // is too long without tool call keywords, or has successfully parsed as a non-tool JSON).
+                                        let shouldFlush = false;
+                                        if (streamHoldBuffer.includes('```')) {
+                                            shouldFlush = true;
+                                        } else if (streamHoldBuffer.length > 800) {
+                                            const VALID_TOOL_NAMES = new Set(allowedTools.map((t: any) => t.name));
+                                            const hasValidToolName = Array.from(VALID_TOOL_NAMES).some(name => streamHoldBuffer.includes(name));
+                                            if (!hasValidToolName) {
+                                                shouldFlush = true;
+                                            }
+                                        } else {
+                                            const startIdx = streamHoldBuffer.indexOf('{');
+                                            if (startIdx !== -1) {
+                                                try {
+                                                    const { obj, endIdx } = parseResilientJSON(streamHoldBuffer, startIdx);
+                                                    if (obj && typeof obj === 'object') {
+                                                        const VALID_TOOL_NAMES = new Set(allowedTools.map((t: any) => t.name));
+                                                        let isToolCall = false;
+                                                        
+                                                        if (Array.isArray(obj.tool_calls)) {
+                                                            isToolCall = obj.tool_calls.some((tc: any) => tc && typeof tc.name === 'string' && VALID_TOOL_NAMES.has(tc.name));
+                                                        } else if (obj.tool_call && typeof obj.tool_call === 'object' && typeof obj.tool_call.name === 'string' && VALID_TOOL_NAMES.has(obj.tool_call.name)) {
+                                                            isToolCall = true;
+                                                        } else if (typeof obj.name === 'string' && VALID_TOOL_NAMES.has(obj.name)) {
+                                                            isToolCall = true;
+                                                        }
+                                                        
+                                                        const isComplete = endIdx >= streamHoldBuffer.length - 2;
+                                                        if (isComplete && !isToolCall) {
+                                                            shouldFlush = true;
+                                                        }
+                                                    }
+                                                } catch (e) {
+                                                    if (streamHoldBuffer.length > 200) {
+                                                        const hasKeywords = allowedTools.some((t: any) => streamHoldBuffer.includes(t.name)) ||
+                                                                            streamHoldBuffer.includes('name') ||
+                                                                            streamHoldBuffer.includes('tool_calls') ||
+                                                                            streamHoldBuffer.includes('tool_call');
+                                                        if (!hasKeywords) {
+                                                            shouldFlush = true;
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                shouldFlush = true;
+                                            }
+                                        }
+                                        
+                                        if (shouldFlush) {
+                                            this.callbacks.onStreamChunk(streamHoldBuffer);
+                                            streamHoldBuffer = '';
+                                            streamHoldActive = false;
+                                        }
                                     } else {
                                         this.callbacks.onStreamChunk(delta.content);
+                                    }
+                                }
+                                // Support streaming text JSON for models without tools
+                                if (forceNonTool) {
+                                    const validToolNames = new Set<string>(allowedTools.map((t: any) => t.name));
+                                    const extracted = extractToolCallsFromText(fullContent, validToolNames);
+                                    if (extracted.length > 0) {
+                                        const now = Date.now();
+                                        for (const tc of extracted) {
+                                            const toolId = tc.id;
+                                            const toolName = tc.function.name;
+                                            const rawArgs = tc.function.arguments;
+                                            
+                                            // Throttle stream callback per tool ID to avoid overloading
+                                            const lastTime = lastToolStreamTimes.get(toolId) || 0;
+                                            if (this.callbacks.onToolStream && (now - lastTime >= TOOL_STREAM_THROTTLE_MS)) {
+                                                lastToolStreamTimes.set(toolId, now);
+                                                try {
+                                                    const partialArgs = parsePartialJSON(rawArgs);
+                                                    this.callbacks.onToolStream(toolId, toolName, partialArgs);
+                                                } catch (_e) {
+                                                    // Ignore parsing errors for incomplete JSON
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 if (detectRepetitiveLoop(fullContent)) {
@@ -1110,9 +1197,19 @@ ${userQuery}`;
                                     }
                                     // Flush smart hold buffer (strip tool call JSON) before finishing
                                     if (streamHoldActive && streamHoldBuffer && this.callbacks.onStreamChunk) {
-                                        const cleanedHold = cleanToolCallsFromText(streamHoldBuffer).trim();
+                                        const cleanedHold = cleanToolCallsFromText(streamHoldBuffer, new Set(allowedTools.map((t: any) => t.name))).trim();
                                         if (cleanedHold) {
                                             this.callbacks.onStreamChunk(cleanedHold);
+                                        }
+                                    }
+                                    if (this.callbacks.onToolStream && forceNonTool) {
+                                        const validToolNames = new Set<string>(allowedTools.map((t: any) => t.name));
+                                        const extracted = extractToolCallsFromText(fullContent, validToolNames);
+                                        for (const tc of extracted) {
+                                            try {
+                                                const partialArgs = parsePartialJSON(tc.function.arguments);
+                                                this.callbacks.onToolStream(tc.id, tc.function.name, partialArgs);
+                                            } catch (_e) {}
                                         }
                                     }
                                     finish(assistantMsg);
@@ -1152,11 +1249,21 @@ ${userQuery}`;
                                     this.callbacks.onToolStream(tc.id, tc.function.name, partialArgs);
                                 } catch (_e) {}
                             }
+                            if (forceNonTool) {
+                                const validToolNames = new Set<string>(allowedTools.map((t: any) => t.name));
+                                const extracted = extractToolCallsFromText(fullContent, validToolNames);
+                                for (const tc of extracted) {
+                                    try {
+                                        const partialArgs = parsePartialJSON(tc.function.arguments);
+                                        this.callbacks.onToolStream(tc.id, tc.function.name, partialArgs);
+                                    } catch (_e) {}
+                                }
+                            }
                         }
 
                         // Flush the smart hold buffer: strip tool call JSON before emitting to UI
                         if (streamHoldActive && streamHoldBuffer && this.callbacks.onStreamChunk) {
-                            const cleaned = cleanToolCallsFromText(streamHoldBuffer).trim();
+                            const cleaned = cleanToolCallsFromText(streamHoldBuffer, new Set(allowedTools.map((t: any) => t.name))).trim();
                             if (cleaned) {
                                 this.callbacks.onStreamChunk(cleaned);
                             }
@@ -1543,9 +1650,10 @@ function extractToolCallsFromText(text: string, validToolNames?: Set<string>): a
                 
                 // Case 1: {"tool_calls": [...]}
                 if (Array.isArray(obj.tool_calls)) {
+                    let itemIdx = 0;
                     for (const tc of obj.tool_calls) {
                         if (tc && typeof tc.name === 'string' && VALID_TOOL_NAMES.has(tc.name)) {
-                            const toolId = tc.id || `call_${Math.random().toString(36).substring(2, 11)}`;
+                            const toolId = tc.id || `text_call_${startIdx}_${itemIdx}`;
                             toolCalls.push({
                                 id: toolId,
                                 type: 'function',
@@ -1558,12 +1666,13 @@ function extractToolCallsFromText(text: string, validToolNames?: Set<string>): a
                             });
                             added = true;
                         }
+                        itemIdx++;
                     }
                 }
                 // Case 2: {"tool_call": {...}}
                 else if (obj.tool_call && typeof obj.tool_call === 'object' && typeof obj.tool_call.name === 'string' && VALID_TOOL_NAMES.has(obj.tool_call.name)) {
                     const tc = obj.tool_call;
-                    const toolId = tc.id || `call_${Math.random().toString(36).substring(2, 11)}`;
+                    const toolId = tc.id || `text_call_${startIdx}_0`;
                     toolCalls.push({
                         id: toolId,
                         type: 'function',
@@ -1578,7 +1687,7 @@ function extractToolCallsFromText(text: string, validToolNames?: Set<string>): a
                 }
                 // Case 3: Direct {"name": "...", "arguments": {...}}
                 else if (typeof obj.name === 'string' && VALID_TOOL_NAMES.has(obj.name)) {
-                    const toolId = obj.id || `call_${Math.random().toString(36).substring(2, 11)}`;
+                    const toolId = obj.id || `text_call_${startIdx}_0`;
                     toolCalls.push({
                         id: toolId,
                         type: 'function',

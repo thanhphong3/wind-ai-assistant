@@ -1,9 +1,29 @@
 import * as vscode from 'vscode';
 import { WindWebviewProvider } from './webviewProvider';
 import { ToolsManager } from './tools';
+import * as path from 'path';
+import * as fs from 'fs/promises';
+import * as os from 'os';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Wind extension is now active!');
+
+    // Reset MCP configs on first installation/run
+    const firstInstallKey = 'wind-agent.firstInstall';
+    const isFirstInstall = !context.globalState.get<boolean>(firstInstallKey);
+    if (isFirstInstall) {
+        (async () => {
+            try {
+                const globalPath = path.join(os.homedir(), '.gemini', 'antigravity-ide', 'mcp_config.json');
+                await fs.mkdir(path.dirname(globalPath), { recursive: true });
+                await fs.writeFile(globalPath, JSON.stringify({ mcpServers: {} }, null, 2), 'utf8');
+                console.log('[Extension] Initialized empty global mcp_config.json on first install.');
+            } catch (e) {
+                console.error('[Extension] Failed to initialize empty global mcp_config.json:', e);
+            }
+        })();
+        context.globalState.update(firstInstallKey, true);
+    }
 
     const provider = new WindWebviewProvider(context);
     context.subscriptions.push(provider);

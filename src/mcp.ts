@@ -374,6 +374,24 @@ export class McpManager {
             await fs.writeFile(rootPath, JSON.stringify(output, null, 2), 'utf8');
         }
 
+        const globalPath = path.join(os.homedir(), '.gemini', 'antigravity-ide', 'mcp_config.json');
+        let globalConfigs: Record<string, McpServerConfig> = {};
+        try {
+            const data = await fs.readFile(globalPath, 'utf8');
+            const parsed = JSON.parse(data);
+            if (parsed && parsed.mcpServers) {
+                globalConfigs = parsed.mcpServers;
+            }
+        } catch (e) {
+            // Ignore
+        }
+        if (globalConfigs[name]) {
+            delete globalConfigs[name];
+            modified = true;
+            const output = { mcpServers: globalConfigs };
+            await fs.writeFile(globalPath, JSON.stringify(output, null, 2), 'utf8');
+        }
+
         if (modified) {
             await this.dispose();
             await this.initialize();

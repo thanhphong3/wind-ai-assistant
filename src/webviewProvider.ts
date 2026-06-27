@@ -3752,9 +3752,47 @@ IMPORTANT rules:
             const manager = this._agent ? this._agent.toolsManager : new ToolsManager(workspaceRoot);
             try {
                 const servers = await manager.getMcpServers();
+                
+                // Construct presets dynamically with absolute paths resolved on user's system!
+                const isWindows = process.platform === 'win32';
+                const unityExecutableName = isWindows ? 'relay_win.exe' : (process.platform === 'darwin' ? 'relay_mac' : 'relay_linux');
+                const unityPath = path.join(os.homedir(), '.unity', 'relay', unityExecutableName);
+
+                const presets = [
+                    {
+                        label: '🎮 Unity MCP',
+                        name: 'unity-mcp',
+                        command: unityPath,
+                        args: ['--mcp'],
+                        env: {}
+                    },
+                    {
+                        label: '🌐 Everything MCP',
+                        name: 'everything-mcp',
+                        command: 'npx',
+                        args: ['-y', '@modelcontextprotocol/server-everything'],
+                        env: {}
+                    },
+                    {
+                        label: '📁 Filesystem MCP',
+                        name: 'filesystem-mcp',
+                        command: 'npx',
+                        args: ['-y', '@modelcontextprotocol/server-filesystem', workspaceRoot],
+                        env: {}
+                    },
+                    {
+                        label: '🧠 Memory MCP',
+                        name: 'memory-mcp',
+                        command: 'npx',
+                        args: ['-y', '@modelcontextprotocol/server-memory'],
+                        env: {}
+                    }
+                ];
+
                 this._view.webview.postMessage({
                     type: 'mcpServers',
-                    servers
+                    servers,
+                    presets
                 });
             } catch (err: any) {
                 console.error('Failed to get MCP servers:', err);

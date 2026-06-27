@@ -3840,6 +3840,57 @@
                 }
                 break;
             case 'mcpServers': {
+                // Populate Presets
+                const presetsContainer = document.getElementById('mcp-presets-container');
+                if (presetsContainer) {
+                    presetsContainer.innerHTML = '';
+                    const presets = message.presets || [];
+                    presets.forEach(preset => {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'settings-action-btn';
+                        btn.style.width = 'auto';
+                        btn.style.padding = '6px 12px';
+                        btn.style.fontSize = '11px';
+                        btn.style.margin = '0';
+                        btn.style.background = 'var(--bg-secondary)';
+                        btn.style.border = '1px solid var(--border-color)';
+                        btn.style.borderRadius = '6px';
+                        btn.style.color = 'var(--text-primary)';
+                        btn.style.cursor = 'pointer';
+                        btn.style.fontWeight = '500';
+                        btn.textContent = preset.label || preset.name;
+                        
+                        btn.onclick = (e) => {
+                            e.stopPropagation();
+                            
+                            // Autofill
+                            const nameInput = document.getElementById('add-mcp-name');
+                            if (nameInput) {
+                                nameInput.value = preset.name;
+                            }
+                            
+                            const commandInput = document.getElementById('add-mcp-command');
+                            if (commandInput) {
+                                commandInput.value = preset.command;
+                            }
+                            
+                            const argsInput = document.getElementById('add-mcp-args');
+                            if (argsInput) {
+                                argsInput.value = (preset.args || []).join(', ');
+                            }
+                            
+                            const envInput = document.getElementById('add-mcp-env');
+                            if (envInput) {
+                                envInput.value = preset.env && Object.keys(preset.env).length > 0 
+                                    ? JSON.stringify(preset.env, null, 2) 
+                                    : '';
+                            }
+                        };
+                        presetsContainer.appendChild(btn);
+                    });
+                }
+
                 const mcpList = document.getElementById('mcp-servers-list');
                 if (mcpList) {
                     mcpList.innerHTML = '';
