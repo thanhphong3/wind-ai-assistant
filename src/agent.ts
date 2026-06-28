@@ -12,6 +12,7 @@ export interface AgentCallbacks {
     onToolCall: (toolId: string, name: string, args: any, requiresApproval: boolean) => Promise<boolean>;
     onToolResult: (toolId: string, name: string, success: boolean, resultMessage: string) => void;
     onToolStream?: (toolId: string, name: string, args: any) => void;
+    onMessageTextUpdated?: (text: string) => void;
     onKeySuccess?: (keyIndex: number) => void;
     onModelSwitch?: (model: string, keyIndex: number) => void;
     onBrowserScreenshot?: (base64: string) => void;
@@ -532,6 +533,9 @@ ${userQuery}`;
                         assistantMessage.tool_calls = extracted;
                         // Clean the JSON block from assistantMessage.content now that the tool calls are extracted
                         assistantMessage.content = cleanToolCallsFromText(assistantMessage.content, validToolNames);
+                        if (this.callbacks.onMessageTextUpdated) {
+                            this.callbacks.onMessageTextUpdated(assistantMessage.content);
+                        }
                     }
                 }
             }

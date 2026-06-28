@@ -4200,6 +4200,13 @@
                     scrollToBottom();
                 }
                 break;
+            case 'updateStreamingText':
+                if (currentStreamingBubble) {
+                    currentStreamingText = message.text;
+                    currentStreamingBubble.innerHTML = formatMarkdown(currentStreamingText, true) + '<span class="typing-cursor"></span>';
+                    scrollToBottom();
+                }
+                break;
             case 'addMessage':
                 // Hide welcome card
                 const welcome = document.getElementById('welcome-container');

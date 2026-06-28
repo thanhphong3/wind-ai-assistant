@@ -3052,6 +3052,14 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                     });
                 }
             },
+            onMessageTextUpdated: (text: string) => {
+                if (this._activeSessionId === sessionId) {
+                    this._view?.webview.postMessage({
+                        type: 'updateStreamingText',
+                        text
+                    });
+                }
+            },
             onToolCall: async (toolId: string, name: string, args: any, requiresApproval: boolean) => {
                 this._pendingToolArgs.set(toolId, args);
 
