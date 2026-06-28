@@ -650,18 +650,6 @@
     function detectAndParseOptions(text) {
         if (!text) return null;
         
-        const textLower = text.toLowerCase();
-        const choicePhrases = [
-            'choose', 'select', 'option', 'which', 'what would you', 'would you like', 'what should I', 'your choice',
-            'chọn', 'lựa chọn', 'phương án', 'hướng nào', 'bạn muốn', 'hãy cho tôi biết', 'bạn chọn'
-        ];
-        const hasQuestionMark = text.includes('?');
-        const hasChoiceKeyword = choicePhrases.some(phrase => textLower.includes(phrase));
-        
-        if (!hasQuestionMark && !hasChoiceKeyword) {
-            return null;
-        }
-
         const lines = text.split('\n');
         const options = [];
         let optionStartIndex = -1;
@@ -716,10 +704,37 @@
             }
         }
 
-        if (options.length < 2) {
+        // We need at least 2 options to make a choice.
+        // Also if we have too many options (e.g. > 8), it's probably a list of files or steps, not a popup question.
+        if (options.length < 2 || options.length > 8) {
+            if (options.length < 2) {
+                // Check if the last paragraph is a standalone Yes/No question
+                const paragraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 0 && !p.startsWith('```'));
+                if (paragraphs.length > 0) {
+                    const lastParagraph = paragraphs[paragraphs.length - 1];
+                    const lastParagraphLower = lastParagraph.toLowerCase();
+                    if (lastParagraph.endsWith('?')) {
+                        const openEndedWords = /(tại sao|làm sao|như thế nào|\bai\b|ở đâu|khi nào|cái gì|\bgì\b|bao nhiêu|mấy|\bwhat\b|\bwhy\b|\bhow\b|\bwho\b|\bwhere\b|\bwhen\b|\bwhich\b)/i;
+                        const isYesNoEnglish = /^(do you|would you|should i|should we|can you|can i|is it|are you|does it|will you|shall we|would it|do we|can we|could you|could we|did you)/i.test(lastParagraphLower);
+                        const isYesNoVietnamese = /(không\?|được không\?|nhé\?|chưa\?|rồi chứ\?)$/i.test(lastParagraphLower);
+                        
+                        if (!openEndedWords.test(lastParagraphLower) && (isYesNoEnglish || isYesNoVietnamese)) {
+                            return {
+                                question: lastParagraph,
+                                options: isYesNoVietnamese ? ['Có', 'Không'] : ['Yes', 'No'],
+                                rawOptions: [],
+                                isMultiSelect: false
+                            };
+                        }
+                    }
+                }
+            }
             return null;
         }
 
+        // --- CONTEXT VALIDATION ---
+        
+        // 1. Get the introduction lines immediately preceding the options list
         const introLines = [];
         for (let i = 0; i < optionStartIndex; i++) {
             const line = lines[i].trim();
@@ -728,12 +743,117 @@
                 introLines.push(line);
             }
         }
+        
+        // 2. Get post-list lines immediately following the options list
+        const lastOptionIndex = options[options.length - 1].originalIndex;
+        const postLines = [];
+        for (let i = lastOptionIndex + 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line.startsWith('```')) continue;
+            if (line) {
+                postLines.push(line);
+            }
+        }
+
+        // Extract immediate contexts (e.g. last 3 intro lines, first 2 post lines)
+        const immediateIntro = introLines.slice(-3).join(' ').toLowerCase();
+        const immediatePost = postLines.slice(0, 2).join(' ').toLowerCase();
+        
+        // Choice keywords: strong indicators that a choice is being asked
+        const strongChoiceKeywords = [
+            'choose', 'select', 'option', 'which', 'prefer', 'either', 'alternative', 'decide', 'pick', 'would you like', 'what should i', 'what would you', 'how should we',
+            'chọn', 'lựa chọn', 'tùy chọn', 'phương án', 'hướng đi', 'hướng giải quyết', 'hướng nào', 'bạn muốn', 'nên chọn', 'nên dùng', 'nên làm', 'quyết định', 'nào sau đây'
+        ];
+        
+        const pastChoiceRegex = /(đã chọn|đã lựa chọn|vừa chọn|you selected|you chose|you have selected|you have chosen|already selected|already chosen)/g;
+        const safeIntro = immediateIntro.replace(pastChoiceRegex, '');
+        const safePost = immediatePost.replace(pastChoiceRegex, '');
+        
+        const introHasQuestion = immediateIntro.includes('?');
+        const introHasChoiceKeyword = strongChoiceKeywords.some(kw => safeIntro.includes(kw));
+        
+        const postHasQuestion = immediatePost.includes('?');
+        const postHasChoiceKeyword = strongChoiceKeywords.some(kw => safePost.includes(kw));
+        
+        // Soft indicators in introduction that imply a list is coming
+        const softIntroKeywords = [
+            'following', 'below', 'options', 'choices', 'sau đây', 'dưới đây', 'phương án', 'lựa chọn', 'tùy chọn', 'cách'
+        ];
+        const introHasSoftKeyword = softIntroKeywords.some(kw => safeIntro.includes(kw));
+        
+        // We consider it a choice request if:
+        // A. The introduction right before the list explicitly asks a question or contains choice keywords.
+        // B. Or the post-list text right after the list explicitly asks a question or contains choice keywords.
+        // C. Or the post-list asks a question, and the introduction has a soft list indicator.
+        const isChoice = introHasQuestion || introHasChoiceKeyword || postHasChoiceKeyword || (postHasQuestion && (introHasSoftKeyword || introHasChoiceKeyword));
+        
+        if (!isChoice) {
+            return null;
+        }
+
+        // Detect if multi-select is requested based on keywords in introduction or post-list
+        const multiSelectKeywords = [
+            'select all', 'choose all', 'choose any', 'one or more', 'multiple', 'which options', 'any of the following',
+            'chọn các', 'chọn những', 'các phương án', 'các lựa chọn', 'các tùy chọn', 'những phương án', 'những lựa chọn', 'những tùy chọn', 'một hoặc nhiều', 'nhiều phương án', 'nhiều lựa chọn', 'các hướng'
+        ];
+        const isMultiSelect = multiSelectKeywords.some(kw => immediateIntro.includes(kw) || immediatePost.includes(kw));
+
+        // --- OPTION ITEM VALIDATION ---
+        
+        // If the options themselves look like logs, file changes, or past tasks, reject them.
+        let invalidCount = 0;
+        const fileExtRegex = /\.(js|ts|jsx|tsx|json|css|scss|html|py|sh|yml|yaml|md|cmd|bat)$/i;
+        const pathRegex = /^[\w\.\-\/\\_]+\/[\w\.\-\/\\_]+$/i; // E.g., src/index.js
+        
+        // Past tense keywords at the beginning of option text
+        const pastTenseKeywords = [
+            'updated', 'fixed', 'added', 'created', 'deleted', 'configured', 'ran', 'modified', 'resolved', 'implemented', 'set up', 'compiled', 'built', 'merged', 'committed', 'pushed',
+            'đã', 'vừa', 'mới'
+        ];
+        
+        for (const opt of options) {
+            const optText = opt.text.trim();
+            const optLower = optText.toLowerCase();
+            
+            // Too short or too long
+            if (optText.length < 2 || optText.length > 150) {
+                invalidCount++;
+                continue;
+            }
+            
+            // Looks like a file path
+            if (fileExtRegex.test(optText) || (pathRegex.test(optText) && !optText.includes(' '))) {
+                invalidCount++;
+                continue;
+            }
+            
+            // Looks like log line / error line
+            if (optLower.startsWith('[info]') || optLower.startsWith('[error]') || optLower.startsWith('[warning]') || optLower.startsWith('[debug]') ||
+                optLower.startsWith('error:') || optLower.startsWith('warning:') || optLower.startsWith('info:')) {
+                invalidCount++;
+                continue;
+            }
+            
+            // Check for past-tense starting words (case-insensitive word boundary check)
+            const firstWord = optLower.split(/\s+/)[0];
+            if (pastTenseKeywords.includes(firstWord)) {
+                invalidCount++;
+                continue;
+            }
+        }
+        
+        // If more than 50% of the options are flagged as invalid for a choice popup, reject the whole popup
+        if (invalidCount > 0 && (invalidCount / options.length) >= 0.5) {
+            return null;
+        }
+
         const question = introLines.join('\n\n') || "Please select one of the following options:";
 
         return {
             question: question,
             options: options.map(o => o.text),
-            rawOptions: options
+            rawOptions: options,
+            isMultiSelect: isMultiSelect
         };
     }
 
@@ -741,8 +861,50 @@
         const parsed = detectAndParseOptions(text);
         if (!parsed) return;
 
-        const { question, options } = parsed;
+        const { question, options, isMultiSelect } = parsed;
 
+        const opt0 = String(options[0] || '').trim().normalize('NFC').toLowerCase();
+        const opt1 = String(options[1] || '').trim().normalize('NFC').toLowerCase();
+        const isYesNo = parsed.isYesNo || (options.length === 2 && 
+            ((opt0 === 'yes' && opt1 === 'no') ||
+             (opt0 === 'có' && opt1 === 'không') ||
+             (opt0 === 'y' && opt1 === 'n')));
+
+        if (isYesNo) {
+            const footer = document.querySelector('.footer');
+            if (footer) footer.classList.add('has-inline-question');
+
+            const inlineContainer = document.getElementById('inline-question-container');
+            const inlineText = document.getElementById('inline-question-text');
+            const inlineOptions = document.getElementById('inline-question-options');
+            
+            if (!inlineContainer || !inlineText || !inlineOptions) return;
+            
+            inlineText.innerHTML = formatMarkdown(question);
+            inlineOptions.innerHTML = '';
+            
+            options.forEach((optText) => {
+                const btn = document.createElement('button');
+                btn.className = 'inline-option-btn';
+                btn.textContent = optText;
+                btn.onclick = () => {
+                    if (footer) footer.classList.remove('has-inline-question');
+                    inlineContainer.classList.add('hidden');
+                    if (messageInput) {
+                        messageInput.value = optText;
+                        messageInput.style.height = 'auto';
+                        messageInput.style.height = (messageInput.scrollHeight) + 'px';
+                        if (sendButton) sendButton.disabled = false;
+                        sendMessage();
+                    }
+                };
+                inlineOptions.appendChild(btn);
+            });
+            
+            inlineContainer.classList.remove('hidden');
+            return;
+        }
+        
         const modal = document.getElementById('question-modal');
         const modalText = document.getElementById('question-modal-text');
         const optionsContainer = document.getElementById('question-modal-options');
@@ -756,7 +918,7 @@
 
         const modalTitle = document.getElementById('question-modal-title');
         if (modalTitle) {
-            modalTitle.textContent = 'Select an Option';
+            modalTitle.textContent = isMultiSelect ? 'Select Options' : 'Select an Option';
         }
 
         modalText.innerHTML = formatMarkdown(question);
@@ -772,12 +934,15 @@
             row.className = 'option-row';
             
             const input = document.createElement('input');
-            input.type = 'radio';
+            input.type = isMultiSelect ? 'checkbox' : 'radio';
             input.name = 'ask-question-option';
             input.className = 'option-input';
             
-            const num = parsed.rawOptions[optIdx].number;
-            const fullOptText = `${num}. ${optText}`;
+            let fullOptText = optText;
+            if (parsed.rawOptions && parsed.rawOptions.length > optIdx) {
+                const num = parsed.rawOptions[optIdx].number;
+                fullOptText = `${num}. ${optText}`;
+            }
             input.value = fullOptText;
             input.id = `opt-input-${optIdx}`;
 
@@ -790,12 +955,24 @@
             row.appendChild(label);
 
             const toggleSelect = () => {
-                optionsContainer.querySelectorAll('.option-row').forEach(r => r.classList.remove('selected'));
-                optionsContainer.querySelectorAll('.option-input').forEach(i => i.checked = false);
-                input.checked = true;
-                row.classList.add('selected');
-                selectedOptions.clear();
-                selectedOptions.add(fullOptText);
+                if (isMultiSelect) {
+                    if (input.checked) {
+                        input.checked = false;
+                        row.classList.remove('selected');
+                        selectedOptions.delete(fullOptText);
+                    } else {
+                        input.checked = true;
+                        row.classList.add('selected');
+                        selectedOptions.add(fullOptText);
+                    }
+                } else {
+                    optionsContainer.querySelectorAll('.option-row').forEach(r => r.classList.remove('selected'));
+                    optionsContainer.querySelectorAll('.option-input').forEach(i => i.checked = false);
+                    input.checked = true;
+                    row.classList.add('selected');
+                    selectedOptions.clear();
+                    selectedOptions.add(fullOptText);
+                }
             };
 
             row.onclick = (e) => {
@@ -804,10 +981,20 @@
             };
 
             input.onchange = () => {
-                optionsContainer.querySelectorAll('.option-row').forEach(r => r.classList.remove('selected'));
-                row.classList.add('selected');
-                selectedOptions.clear();
-                selectedOptions.add(fullOptText);
+                if (isMultiSelect) {
+                    if (input.checked) {
+                        row.classList.add('selected');
+                        selectedOptions.add(fullOptText);
+                    } else {
+                        row.classList.remove('selected');
+                        selectedOptions.delete(fullOptText);
+                    }
+                } else {
+                    optionsContainer.querySelectorAll('.option-row').forEach(r => r.classList.remove('selected'));
+                    row.classList.add('selected');
+                    selectedOptions.clear();
+                    selectedOptions.add(fullOptText);
+                }
             };
 
             optionsContainer.appendChild(row);
@@ -830,7 +1017,11 @@
             if (writeInVal) {
                 finalAnswer = writeInVal;
             } else if (selectedOptions.size > 0) {
-                finalAnswer = Array.from(selectedOptions)[0];
+                if (isMultiSelect) {
+                    finalAnswer = Array.from(selectedOptions).join(', ');
+                } else {
+                    finalAnswer = Array.from(selectedOptions)[0];
+                }
             }
 
             if (finalAnswer) {
@@ -959,6 +1150,8 @@
             } else {
                 appContainer.classList.remove('agent-running');
                 if (floatingControls) floatingControls.classList.add('hidden');
+                const footer = document.querySelector('.footer');
+                if (footer) footer.classList.remove('has-inline-question');
             }
         }
     }
