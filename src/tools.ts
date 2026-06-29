@@ -1173,7 +1173,7 @@ export class ToolsManager {
             }
             const uris = await vscode.workspace.findFiles(
                 '**/*',
-                '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**,**/.vscode/**,**/bin/**,**/obj/**}',
+                '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**,**/.vscode/**,**/bin/**,**/obj/**,**/Library/**,**/Temp/**,**/Logs/**,**/UserSettings/**,**/.vs/**,**/*.meta,**/*.png,**/*.mat,**/*.wav,**/*.asset,**/*.prefab,**/*.anim,**/*.fbx,**/*.tga,**/*.mp3,**/*.overrideController,**/*.controller}',
                 501
             );
             if (uris.length === 0) {
@@ -2789,7 +2789,7 @@ Do NOT choose more than one action at a time. Explain your reasoning briefly bef
             // 2. Find all files in the workspace
             const uris = await vscode.workspace.findFiles(
                 '**/*',
-                '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**,**/.vscode/**,**/bin/**,**/obj/**,**/build/**,**/.next/**,**/target/**,**/.venv/**,**/venv/**,**/env/**,**/.idea/**,**/.cache/**,**/.nuxt/**}'
+                '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**,**/.vscode/**,**/bin/**,**/obj/**,**/build/**,**/.next/**,**/target/**,**/.venv/**,**/venv/**,**/env/**,**/.idea/**,**/.cache/**,**/.nuxt/**,**/Library/**,**/Temp/**,**/Logs/**,**/UserSettings/**,**/.vs/**,**/*.meta,**/*.png,**/*.mat,**/*.wav,**/*.asset,**/*.prefab,**/*.anim,**/*.fbx,**/*.tga,**/*.mp3,**/*.overrideController,**/*.controller}'
             );
             
             if (signal?.aborted) {

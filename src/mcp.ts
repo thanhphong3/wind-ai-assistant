@@ -42,6 +42,12 @@ export class McpClient {
 
     async connect(): Promise<void> {
         return new Promise((resolve, reject) => {
+            let timeoutToken: NodeJS.Timeout | undefined = setTimeout(() => {
+                timeoutToken = undefined;
+                this.disconnect().catch(() => {});
+                reject(new Error(`Connection to MCP server ${this.name} timed out after 5 seconds`));
+            }, 5000);
+
             try {
                 const env = { ...process.env, ...(this.config.env || {}) };
                 this.process = spawn(this.config.command, this.config.args || [], {
@@ -52,8 +58,11 @@ export class McpClient {
                 });
 
                 this.process.on('error', (err) => {
-                    console.error(`[MCP Client] ${this.name} spawn error:`, err);
-                    reject(err);
+                    if (timeoutToken) {
+                        clearTimeout(timeoutToken);
+                        timeoutToken = undefined;
+                        reject(err);
+                    }
                 });
 
                 this.process.stderr?.on('data', (data) => {
@@ -61,8 +70,13 @@ export class McpClient {
                 });
 
                 this.process.on('exit', (code, signal) => {
-                    console.log(`[MCP Client] ${this.name} exited with code ${code}, signal ${signal}`);
-                    this.cleanup(new Error(`MCP server ${this.name} exited`));
+                    if (timeoutToken) {
+                        clearTimeout(timeoutToken);
+                        timeoutToken = undefined;
+                        console.log(`[MCP Client] ${this.name} exited with code ${code}, signal ${signal}`);
+                        this.cleanup(new Error(`MCP server ${this.name} exited`));
+                        reject(new Error(`MCP server ${this.name} exited with code ${code}`));
+                    }
                 });
 
                 this.reader = readline.createInterface({
@@ -75,9 +89,26 @@ export class McpClient {
                 });
 
                 // Perform handshake
-                this.initializeHandshake().then(resolve).catch(reject);
+                this.initializeHandshake().then(() => {
+                    if (timeoutToken) {
+                        clearTimeout(timeoutToken);
+                        timeoutToken = undefined;
+                        resolve();
+                    }
+                }).catch((err) => {
+                    if (timeoutToken) {
+                        clearTimeout(timeoutToken);
+                        timeoutToken = undefined;
+                        this.disconnect().catch(() => {});
+                        reject(err);
+                    }
+                });
 
             } catch (e) {
+                if (timeoutToken) {
+                    clearTimeout(timeoutToken);
+                    timeoutToken = undefined;
+                }
                 reject(e);
             }
         });

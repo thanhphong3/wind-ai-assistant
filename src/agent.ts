@@ -353,7 +353,10 @@ CRITICAL: Fast Action is enabled. You must execute tools immediately.
         this.abortController = new AbortController();
         if (this.toolsManager) {
             this.toolsManager.setLLMConfig(this.keys, this.endpoint, this.model);
-            await this.toolsManager.initializeMcp();
+            // MCP is only needed in modes that can execute custom tools (agent, auto, goal)
+            if (mode !== 'chat' && mode !== 'plan' && mode !== 'grill') {
+                await this.toolsManager.initializeMcp();
+            }
         }
         const isGoogle = this.endpoint.includes('googleapis.com');
         const isOpenAI = this.endpoint.includes('api.openai.com');

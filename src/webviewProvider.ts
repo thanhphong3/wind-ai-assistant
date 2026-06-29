@@ -356,22 +356,33 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
             
             const isIgnored = (fsPath: string) => {
                 const normalized = fsPath.replace(/\\/g, '/');
-                return normalized.includes('/node_modules/') ||
-                       normalized.includes('/.git/') ||
-                       normalized.includes('/out/') ||
-                       normalized.includes('/dist/') ||
-                       normalized.includes('/.vscode/') ||
-                       normalized.includes('/bin/') ||
-                       normalized.includes('/obj/') ||
-                       normalized.includes('/build/') ||
-                       normalized.includes('/.next/') ||
-                       normalized.includes('/target/') ||
-                       normalized.includes('/.venv/') ||
-                       normalized.includes('/venv/') ||
-                       normalized.includes('/env/') ||
-                       normalized.includes('/.idea/') ||
-                       normalized.includes('/.cache/') ||
-                       normalized.includes('/.nuxt/');
+                if (normalized.includes('/node_modules/') ||
+                    normalized.includes('/.git/') ||
+                    normalized.includes('/out/') ||
+                    normalized.includes('/dist/') ||
+                    normalized.includes('/.vscode/') ||
+                    normalized.includes('/bin/') ||
+                    normalized.includes('/obj/') ||
+                    normalized.includes('/build/') ||
+                    normalized.includes('/.next/') ||
+                    normalized.includes('/target/') ||
+                    normalized.includes('/.venv/') ||
+                    normalized.includes('/venv/') ||
+                    normalized.includes('/env/') ||
+                    normalized.includes('/.idea/') ||
+                    normalized.includes('/.cache/') ||
+                    normalized.includes('/.nuxt/') ||
+                    normalized.includes('/Library/') ||
+                    normalized.includes('/Temp/') ||
+                    normalized.includes('/Logs/') ||
+                    normalized.includes('/UserSettings/') ||
+                    normalized.includes('/.vs/')) {
+                    return true;
+                }
+                const ext = fsPath.split('.').pop()?.toLowerCase();
+                return ext === 'meta' || ext === 'png' || ext === 'mat' || ext === 'wav' ||
+                       ext === 'asset' || ext === 'prefab' || ext === 'anim' || ext === 'fbx' ||
+                       ext === 'tga' || ext === 'mp3' || ext === 'overridecontroller' || ext === 'controller';
             };
 
             this._generalFileWatcher.onDidCreate(async (uri) => {
@@ -3339,7 +3350,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
             }
             const files = await vscode.workspace.findFiles(
                 '**/*',
-                '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**,**/.vscode/**,**/bin/**,**/obj/**,**/build/**,**/.next/**,**/target/**,**/.venv/**,**/venv/**,**/env/**,**/.idea/**,**/.cache/**,**/.nuxt/**}',
+                '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**,**/.vscode/**,**/bin/**,**/obj/**,**/build/**,**/.next/**,**/target/**,**/.venv/**,**/venv/**,**/env/**,**/.idea/**,**/.cache/**,**/.nuxt/**,**/Library/**,**/Temp/**,**/Logs/**,**/UserSettings/**,**/.vs/**,**/*.meta,**/*.png,**/*.mat,**/*.wav,**/*.asset,**/*.prefab,**/*.anim,**/*.fbx,**/*.tga,**/*.mp3,**/*.overrideController,**/*.controller}',
                 10001
             );
             let relativePaths = files.map(file => vscode.workspace.asRelativePath(file).replace(/\\/g, '/'));
