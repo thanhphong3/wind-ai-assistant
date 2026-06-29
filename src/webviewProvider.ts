@@ -647,6 +647,20 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 }
+                case 'toggleMcpServer': {
+                    const workspaceFolders = vscode.workspace.workspaceFolders;
+                    if (workspaceFolders && workspaceFolders.length > 0) {
+                        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+                        const manager = this._agent ? this._agent.toolsManager : new ToolsManager(workspaceRoot);
+                        try {
+                            await manager.toggleMcpServer(data.name, data.enabled);
+                            await this._sendMcpServers();
+                        } catch (err: any) {
+                            vscode.window.showErrorMessage(`Failed to toggle MCP Server: ${err.message}`);
+                        }
+                    }
+                    break;
+                }
                 case 'updateSetting': {
                     const config = vscode.workspace.getConfiguration('windAgent');
                     if (data.key === 'autoExecution') {

@@ -861,6 +861,10 @@ export class ToolsManager {
         await this.mcpManager.deleteMcpServer(name);
     }
 
+    public async toggleMcpServer(name: string, enabled: boolean) {
+        await this.mcpManager.toggleMcpServer(name, enabled);
+    }
+
     private resolvePath(relativePath: string): string {
         const cleanRelative = relativePath.replace(/^[/\\]+/, '');
         const resolved = path.resolve(this.workspaceRoot, cleanRelative);

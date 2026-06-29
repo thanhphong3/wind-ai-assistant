@@ -4101,6 +4101,10 @@
                             item.style.border = '1px solid var(--border-color)';
                             item.style.borderRadius = '8px';
 
+                            if (server.disabled === true) {
+                                item.style.opacity = '0.5';
+                            }
+
                             const details = document.createElement('div');
                             details.style.display = 'flex';
                             details.style.flexDirection = 'column';
@@ -4130,6 +4134,65 @@
                             actions.style.display = 'flex';
                             actions.style.gap = '6px';
                             actions.style.alignItems = 'center';
+
+                            // Toggle Switch
+                            const switchLabel = document.createElement('label');
+                            switchLabel.className = 'mcp-switch';
+                            switchLabel.style.position = 'relative';
+                            switchLabel.style.display = 'inline-block';
+                            switchLabel.style.width = '24px';
+                            switchLabel.style.height = '14px';
+                            switchLabel.style.margin = '0 4px';
+                            switchLabel.style.cursor = 'pointer';
+
+                            const switchInput = document.createElement('input');
+                            switchInput.type = 'checkbox';
+                            switchInput.checked = server.disabled !== true;
+                            switchInput.style.opacity = '0';
+                            switchInput.style.width = '0';
+                            switchInput.style.height = '0';
+
+                            const switchSlider = document.createElement('span');
+                            switchSlider.style.position = 'absolute';
+                            switchSlider.style.cursor = 'pointer';
+                            switchSlider.style.top = '0';
+                            switchSlider.style.left = '0';
+                            switchSlider.style.right = '0';
+                            switchSlider.style.bottom = '0';
+                            switchSlider.style.backgroundColor = server.disabled === true ? '#666' : 'var(--accent-blue)';
+                            switchSlider.style.transition = '.2s';
+                            switchSlider.style.borderRadius = '14px';
+
+                            const switchCircle = document.createElement('span');
+                            switchCircle.style.position = 'absolute';
+                            switchCircle.style.content = '""';
+                            switchCircle.style.height = '10px';
+                            switchCircle.style.width = '10px';
+                            switchCircle.style.left = server.disabled === true ? '2px' : '12px';
+                            switchCircle.style.bottom = '2px';
+                            switchCircle.style.backgroundColor = 'white';
+                            switchCircle.style.transition = '.2s';
+                            switchCircle.style.borderRadius = '50%';
+
+                            switchInput.onchange = (e) => {
+                                const isEnabled = switchInput.checked;
+                                switchSlider.style.backgroundColor = isEnabled ? 'var(--accent-blue)' : '#666';
+                                switchCircle.style.left = isEnabled ? '12px' : '2px';
+                                if (!isEnabled) {
+                                    item.style.opacity = '0.5';
+                                } else {
+                                    item.style.opacity = '1';
+                                }
+                                vscode.postMessage({
+                                    type: 'toggleMcpServer',
+                                    name: name,
+                                    enabled: isEnabled
+                                });
+                            };
+
+                            switchLabel.appendChild(switchInput);
+                            switchLabel.appendChild(switchSlider);
+                            switchSlider.appendChild(switchCircle);
 
                             // Edit button
                             const editBtn = document.createElement('button');
@@ -4166,6 +4229,7 @@
                                 });
                             };
 
+                            actions.appendChild(switchLabel);
                             actions.appendChild(editBtn);
                             actions.appendChild(deleteBtn);
 

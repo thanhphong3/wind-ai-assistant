@@ -8,6 +8,7 @@ export interface McpServerConfig {
     command: string;
     args?: string[];
     env?: Record<string, string>;
+    disabled?: boolean;
 }
 
 export interface McpConfig {
@@ -231,6 +232,10 @@ export class McpManager {
         this.initPromise = (async () => {
             const configs = await this.loadConfigs();
             for (const [name, config] of Object.entries(configs)) {
+                if (config.disabled === true) {
+                    console.log(`[MCP Manager] Server ${name} is disabled. Skipping connection.`);
+                    continue;
+                }
                 try {
                     console.log(`[MCP Manager] Connecting to server: ${name}...`);
                     const client = new McpClient(name, config, this.workspaceRoot);
@@ -357,6 +362,9 @@ export class McpManager {
         } catch (e) {
             // Ignore if file doesn't exist
         }
+        if (currentConfigs[name] && currentConfigs[name].disabled !== undefined && config.disabled === undefined) {
+            config.disabled = currentConfigs[name].disabled;
+        }
         currentConfigs[name] = config;
         
         const output = { mcpServers: currentConfigs };
@@ -418,6 +426,84 @@ export class McpManager {
         }
         if (globalConfigs[name]) {
             delete globalConfigs[name];
+            modified = true;
+            const output = { mcpServers: globalConfigs };
+            await fs.writeFile(globalPath, JSON.stringify(output, null, 2), 'utf8');
+        }
+
+        if (modified) {
+            await this.dispose();
+            await this.initialize();
+        }
+    }
+
+    public async toggleMcpServer(name: string, enabled: boolean): Promise<void> {
+        let modified = false;
+
+        // 1. Workspace config
+        const wsPath = path.join(this.workspaceRoot, '.vscode', 'mcp_config.json');
+        let currentConfigs: Record<string, McpServerConfig> = {};
+        try {
+            const data = await fs.readFile(wsPath, 'utf8');
+            const parsed = JSON.parse(data);
+            if (parsed && parsed.mcpServers) {
+                currentConfigs = parsed.mcpServers;
+            }
+        } catch (e) {
+            // Ignore
+        }
+        if (currentConfigs[name]) {
+            if (enabled) {
+                delete currentConfigs[name].disabled;
+            } else {
+                currentConfigs[name].disabled = true;
+            }
+            modified = true;
+            const output = { mcpServers: currentConfigs };
+            await fs.writeFile(wsPath, JSON.stringify(output, null, 2), 'utf8');
+        }
+
+        // 2. Workspace root config
+        const rootPath = path.join(this.workspaceRoot, 'mcp_config.json');
+        let rootConfigs: Record<string, McpServerConfig> = {};
+        try {
+            const data = await fs.readFile(rootPath, 'utf8');
+            const parsed = JSON.parse(data);
+            if (parsed && parsed.mcpServers) {
+                rootConfigs = parsed.mcpServers;
+            }
+        } catch (e) {
+            // Ignore
+        }
+        if (rootConfigs[name]) {
+            if (enabled) {
+                delete rootConfigs[name].disabled;
+            } else {
+                rootConfigs[name].disabled = true;
+            }
+            modified = true;
+            const output = { mcpServers: rootConfigs };
+            await fs.writeFile(rootPath, JSON.stringify(output, null, 2), 'utf8');
+        }
+
+        // 3. Global config
+        const globalPath = path.join(os.homedir(), '.gemini', 'antigravity-ide', 'mcp_config.json');
+        let globalConfigs: Record<string, McpServerConfig> = {};
+        try {
+            const data = await fs.readFile(globalPath, 'utf8');
+            const parsed = JSON.parse(data);
+            if (parsed && parsed.mcpServers) {
+                globalConfigs = parsed.mcpServers;
+            }
+        } catch (e) {
+            // Ignore
+        }
+        if (globalConfigs[name]) {
+            if (enabled) {
+                delete globalConfigs[name].disabled;
+            } else {
+                globalConfigs[name].disabled = true;
+            }
             modified = true;
             const output = { mcpServers: globalConfigs };
             await fs.writeFile(globalPath, JSON.stringify(output, null, 2), 'utf8');
