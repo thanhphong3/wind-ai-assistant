@@ -858,6 +858,7 @@
     }
 
     function checkAndShowMessageOptions(text) {
+        return; // Disabled: only show popup when using the tool askQuestion
         const parsed = detectAndParseOptions(text);
         if (!parsed) return;
 
