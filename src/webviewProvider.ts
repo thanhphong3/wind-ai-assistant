@@ -545,7 +545,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                     const autoExecution = config.get<string>('autoExecution') || 'Ask for Approval';
                     const autoExecutePlan = config.get<boolean>('autoExecutePlan') || false;
                     const browser = config.get<string>('browser') || 'auto';
-                    const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') !== false;
+                    const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') === true;
                     const inlineCompletionModel = config.get<string>('inlineCompletionModel') || 'gemini-2.5-flash';
                     const inlineCompletionTimeout = config.get<number>('inlineCompletionTimeout') || 30000;
                     webviewView.webview.postMessage({
@@ -567,7 +567,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                     const autoExecution = config.get<string>('autoExecution') || 'Ask for Approval';
                     const autoExecutePlan = config.get<boolean>('autoExecutePlan') || false;
                     const browser = config.get<string>('browser') || 'auto';
-                    const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') !== false;
+                    const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') === true;
                     const inlineCompletionModel = config.get<string>('inlineCompletionModel') || 'gemini-2.5-flash';
                     const inlineCompletionTimeout = config.get<number>('inlineCompletionTimeout') || 30000;
                     webviewView.webview.postMessage({
@@ -1224,7 +1224,7 @@ Please output the modified code:`;
 
     public async getInlineCompletion(prefix: string, suffix: string, languageId: string, token?: vscode.CancellationToken): Promise<string> {
         const config = vscode.workspace.getConfiguration('windAgent');
-        const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') !== false;
+        const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') === true;
         if (!enableInlineCompletion) {
             return '';
         }

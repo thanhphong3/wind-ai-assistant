@@ -163,7 +163,7 @@
         },
         "windAgent.enableInlineCompletion": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Enable or disable inline code completions (ghost text) as you type."
         },
         "windAgent.inlineCompletionModel": {
