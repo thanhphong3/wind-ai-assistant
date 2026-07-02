@@ -2,7 +2,7 @@
   "name": "wind-agent-assistant",
   "displayName": "Wind Agent Coding Assistant",
   "description": "AI coding assistant.",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "PhamThanhPhong",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -77,6 +77,14 @@
       {
         "command": "wind-agent.openConfig",
         "title": "Open Config (ai_config.json)"
+      },
+      {
+        "command": "wind-agent.acceptInlineHunkAtCursor",
+        "title": "Accept Hunk at Cursor"
+      },
+      {
+        "command": "wind-agent.discardInlineHunkAtCursor",
+        "title": "Revert Hunk at Cursor"
       }
     ],
     "menus": {
@@ -190,6 +198,18 @@
         "key": "ctrl+i",
         "mac": "cmd+i",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "wind-agent.acceptInlineHunkAtCursor",
+        "key": "ctrl+shift+enter",
+        "mac": "cmd+shift+enter",
+        "when": "editorTextFocus && windAgent.isInDiffMode"
+      },
+      {
+        "command": "wind-agent.discardInlineHunkAtCursor",
+        "key": "ctrl+shift+backspace",
+        "mac": "cmd+shift+backspace",
+        "when": "editorTextFocus && windAgent.isInDiffMode"
       }
     ]
   },

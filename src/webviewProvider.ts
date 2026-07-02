@@ -6,6 +6,7 @@ import { Agent } from './agent';
 import { ToolsManager } from './tools';
 import * as crypto from 'crypto';
 import * as os from 'os';
+import { DiffManager } from './diffProvider';
 
 // Centralized model mapping to avoid duplication
 const MODEL_MAPPING: Record<string, string> = {
@@ -105,9 +106,18 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
         startOffset?: number;
         lastReplacementLength?: number;
         queue: EditQueue;
+        originalContent?: string;
+        cleanContent?: string;
+        targetOffset?: number;
+        targetLength?: number;
     }>();
     private _workspaceFilesTimeout?: NodeJS.Timeout;
     private _suppressStreaming = false;
+    private _diffManager?: DiffManager;
+
+    public setDiffManager(diffManager: DiffManager) {
+        this._diffManager = diffManager;
+    }
     private _streamAsThought = false;
     private _currentThreadTitle = 'Thinking Process';
     private _activeConfigName?: string;
@@ -210,6 +220,88 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
         ToolsManager.dispose().catch(err => {
             console.error('Failed to dispose ToolsManager on provider disposal:', err);
         });
+    }
+
+    public get sessionModifiedFiles(): Set<string> {
+        return this._sessionModifiedFiles;
+    }
+
+    public getSessionAcceptedFiles(): Set<string> {
+        return this._sessionAcceptedFiles;
+    }
+
+    public getWorkspaceHash(): string {
+        return this._getWorkspaceHash();
+    }
+
+    public getSafeRelativePath(filePath: string): string {
+        return this._getSafeRelativePath(filePath);
+    }
+
+    public async acceptSingleFile(relativePath: string): Promise<void> {
+        let safeRelative: string;
+        try {
+            safeRelative = this._getSafeRelativePath(relativePath);
+        } catch (err) {
+            console.error(err);
+            return;
+        }
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0) {
+            const workspaceHash = this._getWorkspaceHash();
+            const backupDir = path.join(os.tmpdir(), 'wind-backups', workspaceHash);
+            const backupPath = path.join(backupDir, safeRelative);
+            try {
+                if (await this._fileExists(backupPath)) {
+                    await fs.promises.unlink(backupPath);
+                    // Clean up empty directories in backup recursively, up to backupDir
+                    let dir = path.dirname(backupPath);
+                    while (dir !== backupDir && dir.startsWith(backupDir)) {
+                        if (await this._fileExists(dir) && (await fs.promises.readdir(dir)).length === 0) {
+                            await fs.promises.rmdir(dir);
+                            dir = path.dirname(dir);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to clean up backup file:', e);
+            }
+            
+            // Also remove from metadata.json's newFiles list if it exists
+            const metadataPath = path.join(backupDir, 'metadata.json');
+            if (await this._fileExists(metadataPath)) {
+                try {
+                    const metaStr = await fs.promises.readFile(metadataPath, 'utf8');
+                    const parsed = JSON.parse(metaStr);
+                    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.newFiles)) {
+                        parsed.newFiles = parsed.newFiles.filter((f: string) => f !== safeRelative);
+                        await fs.promises.writeFile(metadataPath, JSON.stringify(parsed, null, 2), 'utf8');
+                    }
+                } catch (e) {
+                    console.error('Error updating metadata.json in acceptSingleFile:', e);
+                }
+            }
+
+            this._sessionAcceptedFiles.add(safeRelative);
+            this._sessionModifiedFiles.delete(safeRelative);
+
+            if (this._sessionModifiedFiles.size === 0) {
+                try {
+                    if (await this._fileExists(backupDir)) {
+                        await fs.promises.rm(backupDir, { recursive: true, force: true });
+                    }
+                } catch (e) {
+                    console.error('Failed to clean up backup directory:', e);
+                }
+            }
+        }
+        await this._sendModifiedFiles();
+    }
+
+    public async discardSingleFile(relativePath: string): Promise<void> {
+        return this._discardSingleFile(relativePath);
     }
 
     private _updateStatusBar() {
@@ -811,20 +903,13 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'acceptChanges': {
-                    const workspaceFolders = vscode.workspace.workspaceFolders;
-                    if (workspaceFolders && workspaceFolders.length > 0) {
-                        const workspaceHash = this._getWorkspaceHash();
-                        const backupDir = path.join(os.tmpdir(), 'wind-backups', workspaceHash);
-                        try {
-                            if (await this._fileExists(backupDir)) {
-                                await fs.promises.rm(backupDir, { recursive: true, force: true });
-                            }
-                        } catch (e) {
-                            console.error('Failed to clean up backup directory:', e);
+                    const filesToAccept = Array.from(this._sessionModifiedFiles);
+                    for (const relativePath of filesToAccept) {
+                        if (this._diffManager) {
+                            await this._diffManager.acceptAllDiff(relativePath);
+                        } else {
+                            await this.acceptSingleFile(relativePath);
                         }
-                    }
-                    for (const relativePath of this._sessionModifiedFiles) {
-                        this._sessionAcceptedFiles.add(relativePath);
                     }
                     this._sessionModifiedFiles.clear();
                     await this._sendModifiedFiles();
@@ -834,7 +919,11 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                 case 'discardChanges': {
                     const filesToDiscard = Array.from(this._sessionModifiedFiles);
                     for (const relativePath of filesToDiscard) {
-                        await this._discardSingleFile(relativePath);
+                        if (this._diffManager) {
+                            await this._diffManager.discardAllDiff(relativePath);
+                        } else {
+                            await this._discardSingleFile(relativePath);
+                        }
                     }
                     this._sessionModifiedFiles.clear();
                     this._sessionAcceptedFiles.clear();
@@ -845,58 +934,11 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                 case 'acceptSingleFile': {
                     try {
                         const relativePath = this._getSafeRelativePath(data.filePath);
-                        const workspaceFolders = vscode.workspace.workspaceFolders;
-                        if (workspaceFolders && workspaceFolders.length > 0) {
-                            const workspaceHash = this._getWorkspaceHash();
-                            const backupDir = path.join(os.tmpdir(), 'wind-backups', workspaceHash);
-                            const backupPath = path.join(backupDir, relativePath);
-                            try {
-                                if (await this._fileExists(backupPath)) {
-                                    await fs.promises.unlink(backupPath);
-                                    // Clean up empty directories in backup recursively, up to backupDir
-                                    let dir = path.dirname(backupPath);
-                                    while (dir !== backupDir && dir.startsWith(backupDir)) {
-                                        if (await this._fileExists(dir) && (await fs.promises.readdir(dir)).length === 0) {
-                                            await fs.promises.rmdir(dir);
-                                            dir = path.dirname(dir);
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                }
-                            } catch (e) {
-                                console.error('Failed to clean up backup file:', e);
-                            }
-                            
-                            // Also remove from metadata.json's newFiles list if it exists
-                            const metadataPath = path.join(backupDir, 'metadata.json');
-                            if (await this._fileExists(metadataPath)) {
-                                try {
-                                    const metaStr = await fs.promises.readFile(metadataPath, 'utf8');
-                                    const parsed = JSON.parse(metaStr);
-                                    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.newFiles)) {
-                                        parsed.newFiles = parsed.newFiles.filter((f: string) => f !== relativePath);
-                                        await fs.promises.writeFile(metadataPath, JSON.stringify(parsed, null, 2), 'utf8');
-                                    }
-                                } catch (e) {
-                                    console.error('Error updating metadata.json in acceptSingleFile:', e);
-                                }
-                            }
-
-                            this._sessionAcceptedFiles.add(relativePath);
-                            this._sessionModifiedFiles.delete(relativePath);
-
-                            if (this._sessionModifiedFiles.size === 0) {
-                                try {
-                                    if (await this._fileExists(backupDir)) {
-                                        await fs.promises.rm(backupDir, { recursive: true, force: true });
-                                    }
-                                } catch (e) {
-                                    console.error('Failed to clean up backup directory:', e);
-                                }
-                            }
+                        if (this._diffManager) {
+                            await this._diffManager.acceptAllDiff(relativePath);
+                        } else {
+                            await this.acceptSingleFile(relativePath);
                         }
-                        await this._sendModifiedFiles();
                         vscode.window.showInformationMessage(`Accepted changes for ${relativePath}.`);
                     } catch (err: any) {
                         vscode.window.showErrorMessage(`Accept failed: ${err.message}`);
@@ -906,7 +948,11 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                 case 'discardSingleFile': {
                     try {
                         const relativePath = this._getSafeRelativePath(data.filePath);
-                        await this._discardSingleFile(relativePath);
+                        if (this._diffManager) {
+                            await this._diffManager.discardAllDiff(relativePath);
+                        } else {
+                            await this._discardSingleFile(relativePath);
+                        }
                         vscode.window.showInformationMessage(`Discarded changes for ${relativePath}.`);
                     } catch (err: any) {
                         vscode.window.showErrorMessage(`Discard failed: ${err.message}`);
@@ -3162,6 +3208,9 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                     if ((name === 'writeFile' || name === 'replaceFileContent' || name === 'multiReplaceFileContent') && args.relativeFilePath) {
                         this._sessionAcceptedFiles.delete(args.relativeFilePath);
                         this._sessionModifiedFiles.add(args.relativeFilePath);
+                        if (this._diffManager) {
+                            this._diffManager.initializeInlineDiff(args.relativeFilePath);
+                        }
                     }
                 }
                 this._pendingToolArgs.delete(toolId);
@@ -3175,6 +3224,9 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                             if (success) {
                                 const doc = await vscode.workspace.openTextDocument(state.absolutePath);
                                 await doc.save();
+                                if (this._diffManager) {
+                                    await this._diffManager.initializeInlineDiff(state.relativePath, state.cleanContent);
+                                }
                             } else {
                                 await this._discardSingleFile(state.relativePath);
                             }
@@ -3252,6 +3304,18 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                             }
                         }
 
+                        // Read original content before any modifications
+                        let originalContent = '';
+                        if (await this._fileExists(absolutePath)) {
+                            try {
+                                originalContent = await fs.promises.readFile(absolutePath, 'utf8');
+                            } catch (e) {
+                                console.error(e);
+                            }
+                        }
+                        state!.originalContent = originalContent;
+                        state!.cleanContent = originalContent;
+
                         this._sessionAcceptedFiles.delete(relativePath);
                         this._sessionModifiedFiles.add(relativePath);
                         if (this._activeSessionId === sessionId) {
@@ -3276,13 +3340,16 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                         if (toolName === 'writeFile') {
                             const partialContent = args.content;
                             if (partialContent !== undefined) {
-                                const edit = new vscode.WorkspaceEdit();
-                                const fullRange = new vscode.Range(
-                                    doc.positionAt(0),
-                                    doc.positionAt(doc.getText().length)
-                                );
-                                edit.replace(doc.uri, fullRange, partialContent);
-                                await vscode.workspace.applyEdit(edit);
+                                state!.cleanContent = partialContent;
+                                if (!this._diffManager) {
+                                    const edit = new vscode.WorkspaceEdit();
+                                    const fullRange = new vscode.Range(
+                                        doc.positionAt(0),
+                                        doc.positionAt(doc.getText().length)
+                                    );
+                                    edit.replace(doc.uri, fullRange, partialContent);
+                                    await vscode.workspace.applyEdit(edit);
+                                }
                             }
                         } else if (toolName === 'replaceFileContent') {
                             const targetContent = args.targetContent;
@@ -3290,38 +3357,47 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
 
                             if (targetContent !== undefined && replacementContent !== undefined) {
                                 const docText = doc.getText();
-                                const hasCRLF = docText.includes('\r\n');
+                                const hasCRLF = state!.originalContent?.includes('\r\n') || docText.includes('\r\n');
                                 const normalizedTarget = hasCRLF ? targetContent.replace(/\r?\n/g, '\r\n') : targetContent.replace(/\r\n/g, '\n');
                                 const normalizedReplacement = hasCRLF ? replacementContent.replace(/\r?\n/g, '\r\n') : replacementContent.replace(/\r\n/g, '\n');
 
-                                if (state!.startOffset === undefined) {
-                                    const offset = docText.indexOf(normalizedTarget);
+                                const originalContent = state!.originalContent;
+                                if (state!.targetOffset === undefined && originalContent !== undefined) {
+                                    const offset = originalContent.indexOf(normalizedTarget);
                                     if (offset !== -1) {
-                                        state!.startOffset = offset;
-                                        state!.lastReplacementLength = normalizedTarget.length;
-
-                                        const editor = vscode.window.activeTextEditor;
-                                        if (editor && editor.document.uri.toString() === doc.uri.toString()) {
-                                            const startPos = doc.positionAt(offset);
-                                            const endPos = doc.positionAt(offset + normalizedTarget.length);
-                                            editor.selection = new vscode.Selection(startPos, endPos);
-                                            editor.revealRange(new vscode.Range(startPos, endPos), vscode.TextEditorRevealType.InCenter);
-                                        }
+                                        state!.targetOffset = offset;
+                                        state!.targetLength = normalizedTarget.length;
                                     }
                                 }
 
-                                if (state!.startOffset !== undefined && state!.lastReplacementLength !== undefined) {
-                                    const start = state!.startOffset;
-                                    const prevLen = state!.lastReplacementLength;
-                                    const editRange = new vscode.Range(
-                                        doc.positionAt(start),
-                                        doc.positionAt(start + prevLen)
-                                    );
-                                    
-                                    const edit = new vscode.WorkspaceEdit();
-                                    edit.replace(doc.uri, editRange, normalizedReplacement);
-                                    await vscode.workspace.applyEdit(edit);
-                                    state!.lastReplacementLength = normalizedReplacement.length;
+                                if (state!.targetOffset !== undefined && state!.targetLength !== undefined && originalContent !== undefined) {
+                                    const start = state!.targetOffset;
+                                    const len = state!.targetLength;
+                                    const cleanContent = originalContent.substring(0, start) + 
+                                                         normalizedReplacement + 
+                                                         originalContent.substring(start + len);
+                                    state!.cleanContent = cleanContent;
+
+                                    if (!this._diffManager) {
+                                        if (state!.startOffset === undefined) {
+                                            const docOffset = docText.indexOf(normalizedTarget);
+                                            if (docOffset !== -1) {
+                                                state!.startOffset = docOffset;
+                                                state!.lastReplacementLength = normalizedTarget.length;
+                                            }
+                                        }
+
+                                        if (state!.startOffset !== undefined && state!.lastReplacementLength !== undefined) {
+                                            const editRange = new vscode.Range(
+                                                doc.positionAt(state!.startOffset),
+                                                doc.positionAt(state!.startOffset + state!.lastReplacementLength)
+                                            );
+                                            const edit = new vscode.WorkspaceEdit();
+                                            edit.replace(doc.uri, editRange, normalizedReplacement);
+                                            await vscode.workspace.applyEdit(edit);
+                                            state!.lastReplacementLength = normalizedReplacement.length;
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { WindWebviewProvider } from './webviewProvider';
 import { ToolsManager } from './tools';
+import { DiffManager } from './diffProvider';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as os from 'os';
@@ -27,6 +28,11 @@ export function activate(context: vscode.ExtensionContext) {
 
     const provider = new WindWebviewProvider(context);
     context.subscriptions.push(provider);
+
+    // Register DiffManager
+    const diffManager = new DiffManager(provider);
+    diffManager.register(context);
+    provider.setDiffManager(diffManager);
 
     // Create Autocomplete Output Channel for error logging and tracking
     const autocompleteOutputChannel = vscode.window.createOutputChannel('Wind Autocomplete');
