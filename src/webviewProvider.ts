@@ -799,23 +799,8 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                             const safeRelativePath = this._getSafeRelativePath(data.filePath);
                             const workspaceRoot = workspaceFolders[0].uri.fsPath;
                             const fullPath = path.join(workspaceRoot, safeRelativePath);
-                            const workspaceHash = this._getWorkspaceHash();
-                            const backupPath = path.join(os.tmpdir(), 'wind-backups', workspaceHash, safeRelativePath);
-
-                            if (await this._fileExists(backupPath)) {
-                                const backupUri = vscode.Uri.file(backupPath);
-                                const currentUri = vscode.Uri.file(fullPath);
-                                const fileName = path.basename(safeRelativePath);
-                                await vscode.commands.executeCommand(
-                                    'vscode.diff',
-                                    backupUri,
-                                    currentUri,
-                                    `${fileName} (Wind Diff)`
-                                );
-                            } else {
-                                const doc = await vscode.workspace.openTextDocument(fullPath);
-                                await vscode.window.showTextDocument(doc);
-                            }
+                            const doc = await vscode.workspace.openTextDocument(fullPath);
+                            await vscode.window.showTextDocument(doc);
                         } catch (err: any) {
                             vscode.window.showErrorMessage(`Cannot open file: ${err.message}`);
                         }
@@ -3207,12 +3192,18 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
             },
             onToolResult: (toolId: string, name: string, success: boolean, resultMessage: string) => {
                 const args = this._pendingToolArgs.get(toolId);
-                if (success && args) {
+                const isStreaming = this._streamingFiles.has(toolId);
+                if (success && args && !isStreaming) {
                     if ((name === 'writeFile' || name === 'replaceFileContent' || name === 'multiReplaceFileContent') && args.relativeFilePath) {
-                        this._sessionAcceptedFiles.delete(args.relativeFilePath);
-                        this._sessionModifiedFiles.add(args.relativeFilePath);
-                        if (this._diffManager) {
-                            this._diffManager.initializeInlineDiff(args.relativeFilePath);
+                        try {
+                            const safeRelative = this._getSafeRelativePath(args.relativeFilePath);
+                            this._sessionAcceptedFiles.delete(safeRelative);
+                            this._sessionModifiedFiles.add(safeRelative);
+                            if (this._diffManager) {
+                                this._diffManager.initializeInlineDiff(safeRelative);
+                            }
+                        } catch (e) {
+                            console.error('Failed to normalize path in onToolResult:', e);
                         }
                     }
                 }
@@ -3229,6 +3220,11 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                                 await doc.save();
                                 if (this._diffManager) {
                                     await this._diffManager.initializeInlineDiff(state.relativePath, state.cleanContent);
+                                }
+                                this._sessionAcceptedFiles.delete(state.relativePath);
+                                this._sessionModifiedFiles.add(state.relativePath);
+                                if (this._activeSessionId === sessionId) {
+                                    this._sendModifiedFilesDebounced();
                                 }
                             } else {
                                 await this._discardSingleFile(state.relativePath);
@@ -3319,11 +3315,6 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                         state!.originalContent = originalContent;
                         state!.cleanContent = originalContent;
 
-                        this._sessionAcceptedFiles.delete(relativePath);
-                        this._sessionModifiedFiles.add(relativePath);
-                        if (this._activeSessionId === sessionId) {
-                            this._sendModifiedFiles();
-                        }
 
                         try {
                             const doc = await vscode.workspace.openTextDocument(absolutePath);
@@ -3664,6 +3655,12 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
         }
         const workspaceRoot = workspaceFolders[0].uri.fsPath;
         const absolutePath = path.resolve(workspaceRoot, relativeFilePath);
+        let safeRelativePath: string;
+        try {
+            safeRelativePath = this._getSafeRelativePath(relativeFilePath);
+        } catch {
+            return `❌ **Access Denied: Path escapes workspace folder bounds:** \`${relativeFilePath}\``;
+        }
         
         try {
             await fs.promises.access(absolutePath);
@@ -3769,18 +3766,18 @@ IMPORTANT rules:
 
             try {
                 if (this._agent) {
-                    await this._agent.toolsManager.backupFile(relativeFilePath);
+                    await this._agent.toolsManager.backupFile(safeRelativePath);
                 } else {
                     const tempTools = new ToolsManager(workspaceRoot);
-                    await tempTools.backupFile(relativeFilePath);
+                    await tempTools.backupFile(safeRelativePath);
                 }
                 await this._writeWorkspaceFile(absolutePath, correctedCode);
                 
-                this._sessionAcceptedFiles.delete(relativeFilePath);
-                this._sessionModifiedFiles.add(relativeFilePath);
+                this._sessionAcceptedFiles.delete(safeRelativePath);
+                this._sessionModifiedFiles.add(safeRelativePath);
                 this._sendModifiedFiles();
 
-                postLog(`✍️ **Automatically applied the bug fix to file \`${relativeFilePath}\`. Restarting compilation/testing...**`);
+                postLog(`✍️ **Automatically applied the bug fix to file \`${safeRelativePath}\`. Restarting compilation/testing...**`);
             } catch (err: any) {
                 postLog(`❌ **Cannot write modified file:** ${err.message}`);
                 break;

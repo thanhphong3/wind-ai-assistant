@@ -500,7 +500,9 @@ export class DiffManager implements vscode.CodeLensProvider {
     }
 
     private getCleanDocumentText(document: vscode.TextDocument, hunks: InlineDiffHunk[]): string {
-        const lines = document.getText().split(/\r?\n/);
+        const text = document.getText();
+        const hasCRLF = text.includes('\r\n');
+        const lines = text.split(/\r?\n/);
         const redLineIndices = new Set<number>();
 
         for (const hunk of hunks) {
@@ -510,10 +512,33 @@ export class DiffManager implements vscode.CodeLensProvider {
         }
 
         const clean = lines.filter((_, idx) => !redLineIndices.has(idx));
-        return clean.join('\n');
+        return clean.join(hasCRLF ? '\r\n' : '\n');
     }
 
-    private async recalculateInlineDiff(relativePath: string, editor: vscode.TextEditor) {
+    private getCleanTextForDiscard(document: vscode.TextDocument, allHunks: InlineDiffHunk[], discardHunkId: string): string {
+        const text = document.getText();
+        const hasCRLF = text.includes('\r\n');
+        const lines = text.split(/\r?\n/);
+        const redLineIndices = new Set<number>();
+        const greenLineIndices = new Set<number>();
+
+        for (const hunk of allHunks) {
+            if (hunk.id === discardHunkId) {
+                for (let i = 0; i < hunk.addedCount; i++) {
+                    greenLineIndices.add(hunk.startLine + hunk.removedCount + i);
+                }
+            } else {
+                for (let i = 0; i < hunk.removedCount; i++) {
+                    redLineIndices.add(hunk.startLine + i);
+                }
+            }
+        }
+
+        const clean = lines.filter((_, idx) => !redLineIndices.has(idx) && !greenLineIndices.has(idx));
+        return clean.join(hasCRLF ? '\r\n' : '\n');
+    }
+
+    private async recalculateInlineDiff(relativePath: string, editor: vscode.TextEditor, cleanContent?: string) {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) return;
         const workspaceRoot = workspaceFolders[0].uri.fsPath;
@@ -527,7 +552,7 @@ export class DiffManager implements vscode.CodeLensProvider {
             const document = editor.document;
             const hunks = this._fileHunksCache.get(relativePath) || [];
 
-            const cleanText = this.getCleanDocumentText(document, hunks);
+            const cleanText = cleanContent !== undefined ? cleanContent : this.getCleanDocumentText(document, hunks);
             const originalText = await fs.readFile(backupPath, 'utf8');
 
             const oldLines = originalText.split(/\r?\n/);
@@ -585,31 +610,7 @@ export class DiffManager implements vscode.CodeLensProvider {
         const doc = await vscode.workspace.openTextDocument(path.join(workspaceFolders[0].uri.fsPath, relativePath));
         const editor = await vscode.window.showTextDocument(doc);
 
-        if (hunk.removedCount > 0) {
-            const edit = new vscode.WorkspaceEdit();
-            const startPos = new vscode.Position(hunk.startLine, 0);
-            let endPos: vscode.Position;
-
-            if (hunk.startLine + hunk.removedCount >= doc.lineCount) {
-                if (hunk.startLine > 0) {
-                    const prevLineText = doc.lineAt(hunk.startLine - 1).text;
-                    const prevLineEnd = new vscode.Position(hunk.startLine - 1, prevLineText.length);
-                    endPos = new vscode.Position(doc.lineCount - 1, doc.lineAt(doc.lineCount - 1).text.length);
-                    edit.delete(doc.uri, new vscode.Range(prevLineEnd, endPos));
-                } else {
-                    endPos = new vscode.Position(doc.lineCount - 1, doc.lineAt(doc.lineCount - 1).text.length);
-                    edit.delete(doc.uri, new vscode.Range(startPos, endPos));
-                }
-            } else {
-                endPos = new vscode.Position(hunk.startLine + hunk.removedCount, 0);
-                edit.delete(doc.uri, new vscode.Range(startPos, endPos));
-            }
-
-            this._isApplyingInternalEdit = true;
-            await vscode.workspace.applyEdit(edit);
-            await doc.save();
-            this._isApplyingInternalEdit = false;
-        }
+        const cleanText = this.getCleanDocumentText(doc, hunks);
 
         if (await fileExists(backupPath)) {
             try {
@@ -623,10 +624,7 @@ export class DiffManager implements vscode.CodeLensProvider {
             }
         }
 
-        const remainingHunks = hunks.filter(h => h.id !== hunkId);
-        this._fileHunksCache.set(relativePath, remainingHunks);
-
-        await this.recalculateInlineDiff(relativePath, editor);
+        await this.recalculateInlineDiff(relativePath, editor, cleanText);
     }
 
     public async discardHunk(relativePath: string, hunkId: string) {
@@ -641,38 +639,9 @@ export class DiffManager implements vscode.CodeLensProvider {
         const doc = await vscode.workspace.openTextDocument(workspacePath);
         const editor = await vscode.window.showTextDocument(doc);
 
-        if (hunk.addedCount > 0) {
-            const edit = new vscode.WorkspaceEdit();
-            const startLine = hunk.startLine + hunk.removedCount;
-            const endLine = hunk.endLine;
-            const startPos = new vscode.Position(startLine, 0);
-            let endPos: vscode.Position;
+        const cleanText = this.getCleanTextForDiscard(doc, hunks, hunkId);
 
-            if (endLine >= doc.lineCount) {
-                if (startLine > 0) {
-                    const prevLineText = doc.lineAt(startLine - 1).text;
-                    const prevLineEnd = new vscode.Position(startLine - 1, prevLineText.length);
-                    endPos = new vscode.Position(doc.lineCount - 1, doc.lineAt(doc.lineCount - 1).text.length);
-                    edit.delete(doc.uri, new vscode.Range(prevLineEnd, endPos));
-                } else {
-                    endPos = new vscode.Position(doc.lineCount - 1, doc.lineAt(doc.lineCount - 1).text.length);
-                    edit.delete(doc.uri, new vscode.Range(startPos, endPos));
-                }
-            } else {
-                endPos = new vscode.Position(endLine, 0);
-                edit.delete(doc.uri, new vscode.Range(startPos, endPos));
-            }
-
-            this._isApplyingInternalEdit = true;
-            await vscode.workspace.applyEdit(edit);
-            await doc.save();
-            this._isApplyingInternalEdit = false;
-        }
-
-        const remainingHunks = hunks.filter(h => h.id !== hunkId);
-        this._fileHunksCache.set(relativePath, remainingHunks);
-
-        await this.recalculateInlineDiff(relativePath, editor);
+        await this.recalculateInlineDiff(relativePath, editor, cleanText);
     }
 
     public async acceptHunkAtCursor() {
