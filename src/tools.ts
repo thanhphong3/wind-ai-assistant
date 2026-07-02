@@ -1318,7 +1318,7 @@ export class ToolsManager {
                 
                 if (linkMatch) {
                     let url = linkMatch[1];
-                    let title = linkMatch[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+                    const title = linkMatch[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
                     
                     if (url.includes('uddg=')) {
                         const uddgMatch = url.match(/uddg=([^&]+)/);
@@ -1344,7 +1344,7 @@ export class ToolsManager {
     }
 
     private async searchWeb(query: string, signal?: AbortSignal): Promise<string> {
-        let results: Array<{ title: string; url: string; snippet: string }> = [];
+        const results: Array<{ title: string; url: string; snippet: string }> = [];
         let errorMsg = '';
 
         // Try Yahoo Search first
@@ -1366,7 +1366,7 @@ export class ToolsManager {
                 const snippetMatch = block.match(/<div class="compText[^>]*>([\s\S]*?)<\/div>/);
                 
                 if (urlMatch && titleMatch) {
-                    let rawUrl = urlMatch[1];
+                    const rawUrl = urlMatch[1];
                     let url = rawUrl;
                     if (url.includes('/RU=')) {
                         const parts = url.split('/RU=');
@@ -1534,7 +1534,7 @@ export class ToolsManager {
                 return output || 'Command ran successfully with no output.';
             } catch (error: any) {
                 if (error.name === 'AbortError' || signal?.aborted) {
-                    throw new Error('Cancelled by user');
+                    throw new Error('Cancelled by user', { cause: error });
                 }
                 return `Command failed with exit code ${error.code || 'unknown'}.\nError:\n${error.message}`;
             }
@@ -1821,7 +1821,7 @@ export class ToolsManager {
             try {
                 await fs.access(backupPath);
                 return; // Backup already exists
-            } catch {}
+            } catch { /* ignore */ }
 
             await fs.mkdir(path.dirname(backupPath), { recursive: true });
             const targetPath = this.resolvePath(relativeFilePath);
@@ -1835,7 +1835,7 @@ export class ToolsManager {
                 if (parsed && typeof parsed === 'object' && Array.isArray(parsed.newFiles)) {
                     metadata = parsed;
                 }
-            } catch {}
+            } catch { /* ignore */ }
 
             try {
                 await fs.copyFile(targetPath, backupPath);
@@ -1857,7 +1857,7 @@ export class ToolsManager {
 
     private async detectLocalBrowser(preferredBrowser: string): Promise<string | undefined> {
         const platform = os.platform();
-        let paths: string[] = [];
+        let paths: string[];
 
         if (preferredBrowser === 'chrome') {
             if (platform === 'win32') {
@@ -2818,7 +2818,7 @@ Do NOT choose more than one action at a time. Explain your reasoning briefly bef
                                 indexableFiles.push(uri);
                             }
                         }
-                    } catch (e) {}
+                    } catch { /* ignore */ }
                 }));
             }
             const filesToProcess = indexableFiles;
@@ -2935,7 +2935,7 @@ function chunkText(text: string, chunkSize: number = 1500, overlap: number = 200
     let start = 0;
     const step = Math.max(1, chunkSize - overlap);
     while (start < text.length) {
-        let end = Math.min(start + chunkSize, text.length);
+        const end = Math.min(start + chunkSize, text.length);
         chunks.push(text.substring(start, end));
         if (end === text.length) break;
         start += step;

@@ -221,14 +221,18 @@
     "compile-tsc": "tsc -p ./",
     "watch-tsc": "tsc -watch -p ./",
     "vsce-package": "vsce package",
-    "publish": "vsce publish"
+    "publish": "vsce publish",
+    "lint": "eslint src"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^20.11.24",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^2.27.0",
+    "eslint": "^10.6.0",
     "ts-loader": "^9.6.2",
     "typescript": "^5.3.3",
+    "typescript-eslint": "^8.62.1",
     "webpack": "^5.107.2",
     "webpack-cli": "^7.0.3"
   },

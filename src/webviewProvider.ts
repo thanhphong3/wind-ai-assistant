@@ -6,6 +6,8 @@ import { Agent } from './agent';
 import { ToolsManager } from './tools';
 import * as crypto from 'crypto';
 import * as os from 'os';
+import * as cp from 'child_process';
+import * as util from 'util';
 import { DiffManager } from './diffProvider';
 
 // Centralized model mapping to avoid duplication
@@ -642,7 +644,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                 case 'message':
                     await this._handleUserMessage(data.text, data.model, data.mode, data.configIndex, data.images, data.contextItems);
                     break;
-                case 'webviewReady':
+                case 'webviewReady': {
                     await this._loadAndSyncConfig();
                     const config = vscode.workspace.getConfiguration('windAgent');
                     const autoExecution = config.get<string>('autoExecution') || 'Ask for Approval';
@@ -665,6 +667,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                     await this._sendWorkspaceFiles();
                     this._sendPermissionsToWebview();
                     break;
+                }
                 case 'getSettings': {
                     const config = vscode.workspace.getConfiguration('windAgent');
                     const autoExecution = config.get<string>('autoExecution') || 'Ask for Approval';
@@ -1012,14 +1015,14 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                         try {
                             const exists = await fs.promises.access(taskMdPath).then(() => true).catch(() => false);
                             if (exists) {
-                                let content = await fs.promises.readFile(taskMdPath, 'utf8');
+                                const content = await fs.promises.readFile(taskMdPath, 'utf8');
                                 const lines = content.split('\n');
                                 let checkboxIndex = 0;
                                 for (let i = 0; i < lines.length; i++) {
-                                    const match = lines[i].match(/^-\s*\[([\sxX\/]?)\]/);
+                                    const match = lines[i].match(/^-\s*\[([\sxX/]?)\]/);
                                     if (match) {
                                         if (checkboxIndex === idx) {
-                                            lines[i] = lines[i].replace(/^-\s*\[([\sxX\/]?)\]/, `- [${status}]`);
+                                            lines[i] = lines[i].replace(/^-\s*\[([\sxX/]?)\]/, `- [${status}]`);
                                             break;
                                         }
                                         checkboxIndex++;
@@ -1102,7 +1105,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                         const { configPath } = this._getConfigFileInfo();
                         if (fs.existsSync(configPath)) {
                             const content = await fs.promises.readFile(configPath, 'utf8');
-                            let currentConfigs = JSON.parse(content);
+                            const currentConfigs = JSON.parse(content);
                             if (Array.isArray(currentConfigs) && typeof configIndex === 'number' && configIndex >= 0 && configIndex < currentConfigs.length) {
                                 const deletedName = currentConfigs[configIndex].name;
                                 const confirmDelete = await vscode.window.showWarningMessage(
@@ -1140,7 +1143,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
         let endpoint = config.get<string>('apiEndpoint') || 'https://generativelanguage.googleapis.com/v1beta/openai';
         let model = config.get<string>('model') || 'gemini-2.5-flash';
         let configName = '';
-        let keys: string[] = [];
+        let keys: string[];
 
         if (configIndex !== undefined && this._aiConfigs && this._aiConfigs[configIndex]) {
             const aiConfig = this._aiConfigs[configIndex];
@@ -1794,7 +1797,7 @@ ${errorCode}
                 const isPlanMode = (targetMode === 'plan') || (targetMode === 'auto' && isPlanOutput);
 
                 let webviewResult = finalResult;
-                let planTasks: string[] = [];
+                const planTasks: string[] = [];
                 if (isPlanMode) {
                     const planStartRegex = /\[PLAN_START\]/i;
                     const planEndRegex = /\[PLAN_END\]/i;
@@ -1821,7 +1824,7 @@ ${errorCode}
                             if (checkboxMatch) {
                                 cleaned = checkboxMatch[1].trim();
                             } else {
-                                const listMatch = cleaned.match(/^([-*+]|[\d]+[\.)])\s*(.+)$/);
+                                const listMatch = cleaned.match(/^([-*+]|\d+[.)])\s*(.+)$/);
                                 if (listMatch) {
                                       cleaned = listMatch[2].trim();
                                 }
@@ -2122,7 +2125,7 @@ ${errorCode}
 
     public async openMcpConfigFile() {
         const workspaceFolders = vscode.workspace.workspaceFolders;
-        let mcpPath = '';
+        let mcpPath: string;
         if (workspaceFolders && workspaceFolders.length > 0) {
             const workspaceRoot = workspaceFolders[0].uri.fsPath;
             const wsPath = path.join(workspaceRoot, '.vscode', 'mcp_config.json');
@@ -2335,7 +2338,7 @@ ${errorCode}
 
         // Restore task statuses from task.md if it exists in workspace
         const workspaceFolders = vscode.workspace.workspaceFolders;
-        let taskStatuses: string[] = [];
+        const taskStatuses: string[] = [];
         if (workspaceFolders && workspaceFolders.length > 0) {
             const workspaceRoot = workspaceFolders[0].uri.fsPath;
             const taskMdPath = path.join(workspaceRoot, 'task.md');
@@ -2345,7 +2348,7 @@ ${errorCode}
                     const content = await fs.promises.readFile(taskMdPath, 'utf8');
                     const lines = content.split('\n');
                     for (const line of lines) {
-                        const match = line.match(/^-\s*\[([\sxX\/]?)\]/);
+                        const match = line.match(/^-\s*\[([\sxX/]?)\]/);
                         if (match) {
                             taskStatuses.push(match[1] || ' ');
                         }
@@ -2448,7 +2451,7 @@ ${errorCode}
             }
         };
 
-        let taskStatuses: string[] = tasks.map((_, idx) => idx < startIndex ? 'x' : ' ');
+        const taskStatuses: string[] = tasks.map((_, idx) => idx < startIndex ? 'x' : ' ');
         await updateTaskFile(taskStatuses);
 
         // Update agent config to match selected model and configIndex
@@ -2787,7 +2790,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                         metadata = parsed;
                     }
                 }
-            } catch (e) {}
+            } catch { /* ignore */ }
 
             try {
                 const workspacePath = path.join(workspaceRoot, safeRelative);
@@ -2961,7 +2964,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                     const backupStats = await fs.promises.stat(backupPath);
                     if (backupStats.size > 1024 * 1024) isTooLarge = true;
                 }
-            } catch {}
+            } catch { /* ignore */ }
 
             if (isTooLarge) {
                 if (!workspaceExists && backupExists) status = 'deleted';
@@ -3483,7 +3486,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
         } catch (error) {
             try {
                 await fs.promises.mkdir(path.dirname(absolutePath), { recursive: true });
-            } catch {}
+            } catch { /* ignore */ }
             await fs.promises.writeFile(absolutePath, content, 'utf8');
         }
     }
@@ -3515,7 +3518,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                    `- \`/schedule "command/goal" in <number> <unit>\`\n` +
                    `- \`/schedule list\`\n` +
                    `- \`/schedule cancel <id>\`\n` +
-                   `*Example: \`/schedule "git status" every 10s\` or \`/schedule "run npm test" in 2 minutes\***`;
+                   `*Example: \`/schedule "git status" every 10s\` or \`/schedule "run npm test" in 2 minutes\`***`;
         }
 
         const typeWord = match[1].toLowerCase(); // 'every' or 'in'
@@ -3682,8 +3685,6 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
             }
         };
 
-        const cp = require('child_process');
-        const util = require('util');
         const execAsync = util.promisify(cp.exec);
 
         let iteration = 1;
@@ -3696,8 +3697,8 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
             }
             postLog(`🔄 **[Test-Loop #${iteration}]** Running command: \`${testCommand}\`...`);
             
-            let stdout = '';
-            let stderr = '';
+            let stdout: string;
+            let stderr: string;
             let runError: any = null;
 
             try {
@@ -3751,7 +3752,7 @@ IMPORTANT rules:
                 throw new Error('Cancelled by user');
             }
 
-            let correctedCode = '';
+            let correctedCode: string;
             try {
                 correctedCode = await this._getLLMSelfHealingFix(fixPrompt, selectedModel, configIndex, signal);
             } catch (err: any) {

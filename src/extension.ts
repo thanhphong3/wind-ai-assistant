@@ -65,6 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    let autocompleteTimeout: NodeJS.Timeout | undefined;
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             WindWebviewProvider.viewType,
@@ -164,22 +165,27 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }),
         vscode.languages.registerInlineCompletionItemProvider(
-            { pattern: '**' },
-            {
-                async provideInlineCompletionItems(document, position, _context, token) {
-                    const config = vscode.workspace.getConfiguration('windAgent');
-                    const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') !== false;
-                    
-                    const timeStr = new Date().toLocaleTimeString();
-                    const relativePath = vscode.workspace.asRelativePath(document.uri);
-                    
-                    if (!enableInlineCompletion) {
-                        autocompleteOutputChannel.appendLine(`[${timeStr}] [INFO] Autocomplete ignored for ${relativePath} (disabled in settings).`);
-                        return [];
-                    }
+                { pattern: '**' },
+                {
+                    async provideInlineCompletionItems(document, position, _context, token) {
+                        const config = vscode.workspace.getConfiguration('windAgent');
+                        const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') !== false;
+                        
+                        const timeStr = new Date().toLocaleTimeString();
+                        const relativePath = vscode.workspace.asRelativePath(document.uri);
+                        
+                        if (!enableInlineCompletion) {
+                            autocompleteOutputChannel.appendLine(`[${timeStr}] [INFO] Autocomplete ignored for ${relativePath} (disabled in settings).`);
+                            return [];
+                        }
 
-                    // 600ms debounce
-                    await new Promise(resolve => setTimeout(resolve, 600));
+                        // 600ms debounce
+                        if (autocompleteTimeout) {
+                            clearTimeout(autocompleteTimeout);
+                        }
+                        await new Promise(resolve => {
+                            autocompleteTimeout = setTimeout(resolve, 600);
+                        });
                     if (token.isCancellationRequested) {
                         return [];
                     }
