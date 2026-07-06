@@ -345,7 +345,9 @@ ${userQuery}`;
                 return  'Task completed.';
             }
 
-            // Print intermediate text content if present (already streamed to UI, but good to log)
+            if (assistantMessage.reasoning_content) {
+                this.callbacks.onLog(`[Reasoning] ${assistantMessage.reasoning_content}`);
+            }
             if (assistantMessage.content) {
                 this.callbacks.onLog(`[Thought] ${assistantMessage.content}`);
             }

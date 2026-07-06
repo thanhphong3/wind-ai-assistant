@@ -201,14 +201,14 @@
       },
       {
         "command": "wind-agent.acceptInlineHunkAtCursor",
-        "key": "ctrl+shift+enter",
-        "mac": "cmd+shift+enter",
+        "key": "alt+enter",
+        "mac": "alt+enter",
         "when": "editorTextFocus && windAgent.isInDiffMode"
       },
       {
         "command": "wind-agent.discardInlineHunkAtCursor",
-        "key": "ctrl+shift+backspace",
-        "mac": "cmd+shift+backspace",
+        "key": "shift+alt+backspace",
+        "mac": "shift+alt+backspace",
         "when": "editorTextFocus && windAgent.isInDiffMode"
       }
     ]

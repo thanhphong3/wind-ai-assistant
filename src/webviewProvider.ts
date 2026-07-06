@@ -1823,12 +1823,19 @@ ${errorCode}
                     }
                 }
 
-                const agentMsg = {
+                const history = runAgent.getHistory();
+                const lastMsg = history[history.length - 1];
+                const reasoningContent = (lastMsg && lastMsg.role === 'assistant' && lastMsg.reasoning_content) ? lastMsg.reasoning_content : undefined;
+
+                const agentMsg: any = {
                     type: 'addMessage',
                     sender: 'agent',
                     text: webviewResult,
                     index: 0
                 };
+                if (reasoningContent) {
+                    agentMsg.reasoningContent = reasoningContent;
+                }
                 const agentIdx = this._appendToSession(session.id, agentMsg);
                 agentMsg.index = agentIdx;
                 if (this._activeSessionId === session.id) {
@@ -3084,6 +3091,8 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                 };
                 if (logText.startsWith('[Thought]')) {
                     msg.title = this._currentThreadTitle;
+                } else if (logText.startsWith('[Reasoning]')) {
+                    msg.title = 'Deep Thinking';
                 }
                 const idx = this._appendToSession(sessionId, msg);
                 msg.index = idx;
@@ -3105,7 +3114,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                 if (this._suppressStreaming) return;
                 if (this._activeSessionId === sessionId) {
                     this._view?.webview.postMessage({
-                        type: 'streamThought',
+                        type: 'streamReasoning',
                         text: chunkText,
                         title: this._currentThreadTitle
                     });
@@ -3161,6 +3170,20 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                     this._view?.webview.postMessage(msg);
                 }
 
+                const cleanIfDiffActive = async () => {
+                    if (this._diffManager && (name === 'writeFile' || name === 'replaceFileContent' || name === 'multiReplaceFileContent')) {
+                        const relPath = args.relativeFilePath || args.filePath || args.path || args.file || args.filename;
+                        if (relPath) {
+                            try {
+                                const safeRelative = this._getSafeRelativePath(relPath);
+                                await this._diffManager.cleanBeforeEdit(safeRelative);
+                            } catch (e) {
+                                console.error('Failed to clean before edit:', e);
+                            }
+                        }
+                    }
+                };
+
                 if (actualRequiresApproval) {
                     const bgTask = this._backgroundTasks.get(sessionId);
                     if (bgTask) {
@@ -3168,7 +3191,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                         this._updateStatusBar();
                     }
                     return new Promise<boolean>((resolve) => {
-                        this._pendingToolResolves.set(toolId, (approvedOrAnswer: any) => {
+                        this._pendingToolResolves.set(toolId, async (approvedOrAnswer: any) => {
                             if (bgTask) {
                                 bgTask.isWaitingApproval = false;
                                 this._updateStatusBar();
@@ -3183,11 +3206,17 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                                 }
                                 resolve(true);
                             } else {
-                                resolve(!!approvedOrAnswer);
+                                if (approvedOrAnswer) {
+                                    await cleanIfDiffActive();
+                                    resolve(true);
+                                } else {
+                                    resolve(false);
+                                }
                             }
                         });
                     });
                 }
+                await cleanIfDiffActive();
                 return true;
             },
             onToolResult: (toolId: string, name: string, success: boolean, resultMessage: string) => {
@@ -3218,11 +3247,11 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                             if (success) {
                                 const doc = await vscode.workspace.openTextDocument(state.absolutePath);
                                 await doc.save();
+                                this._sessionAcceptedFiles.delete(state.relativePath);
+                                this._sessionModifiedFiles.add(state.relativePath);
                                 if (this._diffManager) {
                                     await this._diffManager.initializeInlineDiff(state.relativePath, state.cleanContent);
                                 }
-                                this._sessionAcceptedFiles.delete(state.relativePath);
-                                this._sessionModifiedFiles.add(state.relativePath);
                                 if (this._activeSessionId === sessionId) {
                                     this._sendModifiedFilesDebounced();
                                 }

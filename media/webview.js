@@ -4303,6 +4303,26 @@
                 } else if (message.sender === 'agent' && isStreaming) {
                     removeThinkingBubble();
 
+                    if (currentWorkedCard) {
+                        const activeDetails = currentWorkedCard.querySelector('.worked-card-body details.thinking-details.streaming');
+                        if (activeDetails) {
+                            if (message.reasoningContent) {
+                                activeDetails.classList.remove('streaming');
+                                activeDetails.open = false;
+                                const activeContent = activeDetails.querySelector('.thinking-content');
+                                if (activeContent) {
+                                    activeContent.classList.remove('streaming');
+                                    activeContent.innerHTML = formatMarkdown(message.reasoningContent, false);
+                                }
+                            } else {
+                                activeDetails.remove();
+                                if (currentWorkedCard.querySelector('.worked-card-body').children.length === 0) {
+                                    currentWorkedCard.style.display = 'none';
+                                }
+                            }
+                        }
+                    }
+
                     // Finalize the current thinking card (hide spinner, clear streaming cursors)
                     if (!isAgentRunning) {
                         finalizeWorkedCard();
@@ -4322,6 +4342,30 @@
                     checkAndShowMessageOptions(cleanText);
                 } else {
                     removeThinkingBubble();
+                    if (message.sender === 'agent') {
+                        if (currentWorkedCard) {
+                            const activeDetails = currentWorkedCard.querySelector('.worked-card-body details.thinking-details.streaming');
+                            if (activeDetails) {
+                                if (message.reasoningContent) {
+                                    activeDetails.classList.remove('streaming');
+                                    activeDetails.open = false;
+                                    const activeContent = activeDetails.querySelector('.thinking-content');
+                                    if (activeContent) {
+                                        activeContent.classList.remove('streaming');
+                                        activeContent.innerHTML = formatMarkdown(message.reasoningContent, false);
+                                    }
+                                } else {
+                                    activeDetails.remove();
+                                    if (currentWorkedCard.querySelector('.worked-card-body').children.length === 0) {
+                                        currentWorkedCard.style.display = 'none';
+                                    }
+                                }
+                            }
+                        }
+                        if (!isAgentRunning) {
+                            finalizeWorkedCard();
+                        }
+                    }
                     appendMessage(message.sender, cleanText, false, message.index, message.images, message.contextItems);
                     if (message.sender === 'agent') {
                         checkAndShowMessageOptions(cleanText);
