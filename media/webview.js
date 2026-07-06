@@ -2754,17 +2754,17 @@
                 const wasNearBottom = userAtBottom;
 
                 body.classList.add('hidden'); // Collapse the body when finalized
-                const activeDetails = body.querySelector('details.thinking-details.streaming');
-                if (activeDetails) {
-                    activeDetails.classList.remove('streaming');
-                    activeDetails.open = false;
-                    const activeContent = activeDetails.querySelector('.thinking-content');
+                const activeDetails = body.querySelectorAll('details.streaming');
+                activeDetails.forEach(details => {
+                    details.classList.remove('streaming');
+                    details.open = false;
+                    const activeContent = details.querySelector('.thinking-content, .reasoning-content');
                     if (activeContent) {
                         activeContent.classList.remove('streaming');
                         const cursor = activeContent.querySelector('.typing-cursor');
                         if (cursor) cursor.remove();
                     }
-                }
+                });
 
                 if (wasNearBottom) {
                     setTimeout(() => {
@@ -2862,7 +2862,7 @@
         scrollToBottom();
     }
 
-    function appendThought(thoughtText, isStreamingChunk = false, title = 'Thinking Process') {
+    function appendThought(thoughtText, isStreamingChunk = false, title = 'Thinking Process', type = 'thought') {
         let isNew = false;
         if (!currentWorkedCard) {
             isNew = true;
@@ -2885,54 +2885,72 @@
             cleanThought = cleanThought.trim();
         }
 
+        const typeClass = type === 'reasoning' ? 'reasoning-details' : 'thinking-details';
+        const contentClass = type === 'reasoning' ? 'reasoning-content' : 'thinking-content';
+        const icon = type === 'reasoning' ? '🧠' : '💭';
+
         if (isStreamingChunk) {
-            let activeDetails = body.querySelector('details.thinking-details.streaming');
+            let activeDetails = body.querySelector(`details.${typeClass}.streaming`);
             if (!activeDetails) {
+                // Finalize any other streaming blocks first
+                const otherStreaming = body.querySelectorAll('details.streaming');
+                otherStreaming.forEach(details => {
+                    details.classList.remove('streaming');
+                    const content = details.querySelector('.thinking-content, .reasoning-content');
+                    if (content) {
+                        content.classList.remove('streaming');
+                        const cursor = content.querySelector('.typing-cursor');
+                        if (cursor) cursor.remove();
+                    }
+                });
+
                 activeDetails = document.createElement('details');
-                activeDetails.className = 'thinking-details streaming';
+                activeDetails.className = `${typeClass} streaming`;
                 activeDetails.open = true;
                 activeDetails.innerHTML = `
                     <summary class="thinking-summary">
-                        <span class="thinking-summary-icon">💭</span>
+                        <span class="thinking-summary-icon">${icon}</span>
                         <span class="thinking-summary-text">${escapeHtml(title)}</span>
                     </summary>
-                    <div class="thinking-content streaming"></div>
+                    <div class="${contentClass} streaming"></div>
                 `;
                 body.appendChild(activeDetails);
                 currentStreamingText = '';
             }
-            const activeContent = activeDetails.querySelector('.thinking-content');
+            const activeContent = activeDetails.querySelector(`.${contentClass}`);
             if (activeContent) {
                 currentStreamingText += cleanThought;
                 activeContent.innerHTML = formatMarkdown(currentStreamingText, true) + '<span class="typing-cursor"></span>';
             }
         } else {
-            const activeDetails = body.querySelector('details.thinking-details.streaming');
-            if (activeDetails) {
-                activeDetails.classList.remove('streaming');
-                activeDetails.open = false;
-                const activeContent = activeDetails.querySelector('.thinking-content');
+            const allOfType = body.querySelectorAll(`details.${typeClass}`);
+            const lastDetails = allOfType.length > 0 ? allOfType[allOfType.length - 1] : null;
+
+            if (lastDetails) {
+                lastDetails.classList.remove('streaming');
+                lastDetails.open = false;
+                const activeContent = lastDetails.querySelector(`.${contentClass}`);
                 if (activeContent) {
                     activeContent.classList.remove('streaming');
                     const cursor = activeContent.querySelector('.typing-cursor');
                     if (cursor) cursor.remove();
                     if (cleanThought) {
                         activeContent.innerHTML = formatMarkdown(cleanThought, false);
-                    } else if (currentStreamingText) {
+                    } else if (currentStreamingText && lastDetails.classList.contains('streaming')) {
                         activeContent.innerHTML = formatMarkdown(currentStreamingText, false);
                     }
                 }
             } else {
                 if (cleanThought) {
                     const details = document.createElement('details');
-                    details.className = 'thinking-details';
+                    details.className = `${typeClass}`;
                     details.open = !isRestoringSession;
                     details.innerHTML = `
                         <summary class="thinking-summary">
-                            <span class="thinking-summary-icon">💭</span>
+                            <span class="thinking-summary-icon">${icon}</span>
                             <span class="thinking-summary-text">${escapeHtml(title)}</span>
                         </summary>
-                        <div class="thinking-content">${formatMarkdown(cleanThought, false)}</div>
+                        <div class="${contentClass}">${formatMarkdown(cleanThought, false)}</div>
                     `;
                     body.appendChild(details);
                 }
@@ -4249,9 +4267,13 @@
                 }
                 break;
             }
+            case 'streamReasoning':
+                removeThinkingBubble();
+                appendThought(message.text, true, message.title, 'reasoning');
+                break;
             case 'streamThought':
                 removeThinkingBubble();
-                appendThought(message.text, true, message.title);
+                appendThought(message.text, true, message.title, 'thought');
                 break;
             case 'streamChunk':
                 removeThinkingBubble();
@@ -4292,7 +4314,13 @@
 
                 if (cleanText && cleanText.startsWith('[Thought]')) {
                     const thoughtText = cleanText.replace(/^\[Thought\]\s*/i, '');
-                    appendThought(thoughtText, false, message.title);
+                    appendThought(thoughtText, false, message.title, 'thought');
+                    break;
+                }
+
+                if (cleanText && cleanText.startsWith('[Reasoning]')) {
+                    const thoughtText = cleanText.replace(/^\[Reasoning\]\s*/i, '');
+                    appendThought(thoughtText, false, message.title, 'reasoning');
                     break;
                 }
 
