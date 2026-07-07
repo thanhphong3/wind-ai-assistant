@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { readFileWithEncoding } from './utils';
 import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import axios from 'axios';
@@ -1211,10 +1212,7 @@ export class ToolsManager {
                 return `Error: "${relativeFilePath}" is too large (${(stats.size / 1024 / 1024).toFixed(1)}MB). Use startLine/endLine to read a specific section.`;
             }
 
-            let content = await fs.readFile(targetPath, 'utf8');
-            if (content.startsWith('\uFEFF')) {
-                content = content.substring(1);
-            }
+            let content = await readFileWithEncoding(targetPath);
             if (startLine !== undefined || endLine !== undefined) {
                 const lines = content.split('\n');
                 const start = startLine !== undefined ? Math.max(1, startLine) - 1 : 0;

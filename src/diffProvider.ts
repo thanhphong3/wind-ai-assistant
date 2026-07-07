@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { WindWebviewProvider } from './webviewProvider';
+import { readFileWithEncoding } from './utils';
 
 export interface DiffChange {
     type: 'added' | 'removed' | 'common';
@@ -368,7 +369,7 @@ export class DiffManager implements vscode.CodeLensProvider {
         const backupPath = path.join(backupDir, relativePath);
         if (await fileExists(backupPath)) {
             try {
-                return await fs.readFile(backupPath, 'utf8');
+                return await readFileWithEncoding(backupPath);
             } catch {
                 return null;
             }
@@ -408,8 +409,8 @@ export class DiffManager implements vscode.CodeLensProvider {
         if (!(await fileExists(backupPath)) || !(await fileExists(workspacePath))) return;
 
         try {
-            const originalText = await fs.readFile(backupPath, 'utf8');
-            const currentText = cleanContent !== undefined ? cleanContent : await fs.readFile(workspacePath, 'utf8');
+            const originalText = await readFileWithEncoding(backupPath);
+            const currentText = cleanContent !== undefined ? cleanContent : await readFileWithEncoding(workspacePath);
 
             const oldLines = originalText.split(/\r?\n/);
             const newLines = currentText.split(/\r?\n/);
@@ -604,7 +605,7 @@ export class DiffManager implements vscode.CodeLensProvider {
             const hunks = this._fileHunksCache.get(relativePath) || [];
 
             const cleanText = cleanContent !== undefined ? cleanContent : this.getCleanDocumentText(document, hunks);
-            const originalText = await fs.readFile(backupPath, 'utf8');
+            const originalText = await readFileWithEncoding(backupPath);
 
             const oldLines = originalText.split(/\r?\n/);
             const newLines = cleanText.split(/\r?\n/);
@@ -697,7 +698,7 @@ export class DiffManager implements vscode.CodeLensProvider {
 
         if (await fileExists(backupPath)) {
             try {
-                const originalContent = await fs.readFile(backupPath, 'utf8');
+                const originalContent = await readFileWithEncoding(backupPath);
                 const hasCRLF = originalContent.includes('\r\n');
                 const lines = originalContent.split(/\r?\n/);
                 lines.splice(hunk.originalStartLine, hunk.originalEndLine - hunk.originalStartLine, ...hunk.addedLines);
@@ -806,7 +807,7 @@ export class DiffManager implements vscode.CodeLensProvider {
         const backupPath = path.join(backupDir, relativePath);
 
         if (await fileExists(backupPath)) {
-            const originalContent = await fs.readFile(backupPath, 'utf8');
+            const originalContent = await readFileWithEncoding(backupPath);
             const doc = await vscode.workspace.openTextDocument(workspacePath);
             const edit = new vscode.WorkspaceEdit();
             const fullRange = new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length));

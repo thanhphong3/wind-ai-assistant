@@ -9,6 +9,7 @@ import * as os from 'os';
 import * as cp from 'child_process';
 import * as util from 'util';
 import { DiffManager } from './diffProvider';
+import { readFileWithEncoding } from './utils';
 
 // Centralized model mapping to avoid duplication
 const MODEL_MAPPING: Record<string, string> = {
@@ -597,7 +598,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                                             // Treat as text/code file reference
                                             // Only read files under 100KB to avoid UI freezing or huge contexts
                                             if (stats.size < 100 * 1024) {
-                                                const fileContent = await fs.promises.readFile(filePath, 'utf8');
+                                                const fileContent = await readFileWithEncoding(filePath);
                                                 const workspaceFolders = vscode.workspace.workspaceFolders;
                                                 let displayPath = filePath;
                                                 if (workspaceFolders && workspaceFolders.length > 0) {
@@ -1751,7 +1752,7 @@ ${errorCode}
                             if (await this._fileExists(fullPath)) {
                                 const stats = await fs.promises.stat(fullPath);
                                 if (stats.isFile()) {
-                                    fileContent = await fs.promises.readFile(fullPath, 'utf8');
+                                    fileContent = await readFileWithEncoding(fullPath);
                                 }
                             }
                         } catch (err: any) {
@@ -2793,7 +2794,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                 if (doc) {
                     let backupContent = '';
                     if (!metadata.newFiles.includes(safeRelative) && await this._fileExists(backupPath)) {
-                        backupContent = await fs.promises.readFile(backupPath, 'utf8');
+                        backupContent = await readFileWithEncoding(backupPath);
                     }
                     const edit = new vscode.WorkspaceEdit();
                     const fullRange = new vscode.Range(
@@ -2975,7 +2976,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
             let backupIsEmpty = false;
             if (backupExists) {
                 try {
-                    const backupContent = await fs.promises.readFile(backupPath, 'utf8');
+                    const backupContent = await readFileWithEncoding(backupPath);
                     if (backupContent.trim() === '') {
                         backupIsEmpty = true;
                     }
@@ -2987,7 +2988,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
             if (!workspaceExists && backupExists) {
                 status = 'deleted';
                 try {
-                    const content = await fs.promises.readFile(backupPath, 'utf8');
+                    const content = await readFileWithEncoding(backupPath);
                     deletions = content.split('\n').length;
                 } catch (e) {
                     deletions = 1;
@@ -2995,7 +2996,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
             } else if (workspaceExists && (!backupExists || backupIsEmpty)) {
                 status = 'added';
                 try {
-                    const content = await fs.promises.readFile(workspacePath, 'utf8');
+                    const content = await readFileWithEncoding(workspacePath);
                     additions = content.split('\n').length;
                 } catch (e) {
                     additions = 1;
@@ -3004,8 +3005,8 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                 status = 'modified';
                 try {
                     // Frequency-map based diff for accurate line counting (handles duplicate lines)
-                    const oldContent = await fs.promises.readFile(backupPath, 'utf8');
-                    const newContent = await fs.promises.readFile(workspacePath, 'utf8');
+                    const oldContent = await readFileWithEncoding(backupPath);
+                    const newContent = await readFileWithEncoding(workspacePath);
                     const oldLines = oldContent.split('\n');
                     const newLines = newContent.split('\n');
                     
@@ -3336,7 +3337,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                         let originalContent = '';
                         if (await this._fileExists(absolutePath)) {
                             try {
-                                originalContent = await fs.promises.readFile(absolutePath, 'utf8');
+                                originalContent = await readFileWithEncoding(absolutePath);
                             } catch (e) {
                                 console.error(e);
                             }
@@ -3752,7 +3753,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
 
             postLog(`🧠 **LLM Self-Healing:** Analyzing the error and planning a fix for file \`${relativeFilePath}\`...`);
 
-            const currentCode = await fs.promises.readFile(absolutePath, 'utf8');
+            const currentCode = await readFileWithEncoding(absolutePath);
             const fixPrompt = `You are a self-healing compiler assistant.
 The following test/compilation command failed:
 \`\`\`
