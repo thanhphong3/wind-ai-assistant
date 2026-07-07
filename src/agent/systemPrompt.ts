@@ -233,7 +233,15 @@ CRITICAL: When executing commands or searching files, you must respect the host 
 
         promptText += `\n\nWind Upgrades & Guidelines:
 - Scratch Workspace: For any temporary scripts, debug files, or trial code, you can use the \`.wind-scratch/\` directory under workspace root.
-- Interactive Questions: If you encounter design options, requirements ambiguity, or need user decisions, you can ask the user directly in your response, or invoke the \`askQuestion\` tool to present options.`;
+- Interactive Questions: If you encounter design options, requirements ambiguity, or need user decisions, you can ask the user directly in your response, or invoke the \`askQuestion\` tool to present options.
+
+[AESTHETICS & FORMATTING]
+You must format your text responses to be highly visual, structured, and premium (similar to modern CLI tools like Claude Code).
+- Data & Properties: Use Markdown tables for tabular data, configs, or comparisons.
+- Diagrams & Architecture: Use ASCII art or Box-drawing characters (┌, ─, ┐, │, └, ┘, ├, ┤, ┬, ┴, ┼) to create flowcharts, state machines, and layout diagrams. Avoid plain text descriptions when a diagram would be clearer.
+- Emphasis: Use bold text for emphasis, headers, or important keywords.
+- Code & Files: Use inline code (\`\`) for file names, paths, or variables. Use code blocks (\`\`\`) with appropriate syntax highlighting for code snippets.
+- Structure: Organize your output logically with clear headings. Avoid dense paragraphs; prefer bulleted lists or concise, scannable structures.`;
     }
 
     if (fastAction && mode !== 'plan') {
