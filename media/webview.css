@@ -318,23 +318,20 @@ body {
     margin: 16px 0;
     font-family: 'Consolas', 'Courier New', Courier, monospace;
     font-size: 12px;
+    border: 1px solid #555;
 }
 .message-bubble th {
-    border-top: 1px solid #555;
-    border-bottom: 1px solid #555;
+    border: 1px solid #555;
     padding: 8px 12px;
     text-align: left;
     color: var(--text-primary);
     font-weight: 600;
-    background-color: transparent;
+    background-color: rgba(255, 255, 255, 0.03);
 }
 .message-bubble td {
     padding: 6px 12px;
-    border-bottom: 1px solid #333;
+    border: 1px solid #444;
     color: var(--text-secondary);
-}
-.message-bubble tr:last-child td {
-    border-bottom: 1px solid #555;
 }
 
 .message-bubble pre {
@@ -377,6 +374,20 @@ body {
 
 .message-bubble li {
     margin-bottom: 4px;
+}
+
+.message-bubble blockquote {
+    margin: 12px 0;
+    padding: 8px 14px;
+    background: rgba(66, 133, 244, 0.08);
+    border-left: 4px solid var(--accent-blue);
+    border-radius: 0 6px 6px 0;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.message-bubble blockquote strong {
+    color: var(--text-primary);
 }
 
 /* Tool Execution Card (Compact Style) */

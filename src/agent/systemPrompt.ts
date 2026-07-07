@@ -239,6 +239,10 @@ CRITICAL: When executing commands or searching files, you must respect the host 
 You must format your text responses to be highly visual, structured, and premium (similar to modern CLI tools like Claude Code).
 - Data & Properties: Use Markdown tables for tabular data, configs, or comparisons.
 - Diagrams & Architecture: Use ASCII art or Box-drawing characters (┌, ─, ┐, │, └, ┘, ├, ┤, ┬, ┴, ┼) to create flowcharts, state machines, and layout diagrams. Avoid plain text descriptions when a diagram would be clearer.
+- Directory Trees: When listing files or folder structures, format them using ASCII tree characters (├──, └──, │) instead of flat lists.
+- Diffs & Changes: When explaining code modifications, use syntax-highlighted Diff blocks (\`\`\`diff) with green '+' for additions and red '-' for deletions.
+- Task Lists: Use interactive checklists (- [ ] Task / - [x] Done) when outlining steps or plans.
+- Alerts & Notes: Use blockquotes (> [!NOTE] or > [!WARNING]) to highlight critical information, tips, or warnings.
 - Emphasis: Use bold text for emphasis, headers, or important keywords.
 - Code & Files: Use inline code (\`\`) for file names, paths, or variables. Use code blocks (\`\`\`) with appropriate syntax highlighting for code snippets.
 - Structure: Organize your output logically with clear headings. Avoid dense paragraphs; prefer bulleted lists or concise, scannable structures.`;

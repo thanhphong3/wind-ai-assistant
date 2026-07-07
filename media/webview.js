@@ -2594,6 +2594,39 @@
             return placeholder;
         });
 
+        // Extract and format tables
+        html = html.replace(/(?:^|\n)([ \t]*\|[^\n]+\|[ \t]*\r?\n[ \t]*\|[ \t]*:?---[-| :]*\|[ \t]*\r?\n(?:[ \t]*\|[^\n]+\|[ \t]*(?:\r?\n|$))*)/g, (match, tableContent) => {
+            const lines = tableContent.trim().split('\n').map(l => l.trim());
+            if (lines.length < 2) return match;
+
+            const headerRow = lines[0];
+            const separatorRow = lines[1];
+            const dataRows = lines.slice(2);
+
+            // Parse headers
+            const headers = headerRow.split('|').map(h => h.trim()).filter((h, idx, arr) => idx > 0 && idx < arr.length - 1);
+            
+            // Check if separator is valid
+            const isSeparator = /^[|\s:-]+$/.test(separatorRow);
+            if (!isSeparator) return match;
+
+            let tableHtml = '<table>';
+            tableHtml += '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
+            tableHtml += '<tbody>';
+
+            dataRows.forEach(row => {
+                if (!row.trim()) return;
+                const cols = row.split('|').map(c => c.trim()).filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
+                tableHtml += '<tr>' + cols.map(c => `<td>${c}</td>`).join('') + '</tr>';
+            });
+
+            tableHtml += '</tbody></table>';
+
+            const placeholder = `___WIND_CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}___`;
+            codeBlocks.push(tableHtml);
+            return '\n' + placeholder + '\n';
+        });
+
         // Strip thinking/thought tags from response
         html = html.replace(/^<thought>\s*/i, '');
         html = html.replace(/^<thought\s+/i, '');
@@ -2619,6 +2652,12 @@
 
         // Bold text: **text**
         html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+        // Headings: #, ##, ###, ####, #####, ######
+        html = html.replace(/^(#{1,6})[ \t]+([^\n]+)$/gm, (match, hashes, title) => {
+            const level = hashes.length;
+            return `<h${level}>${title.trim()}</h${level}>`;
+        });
 
         // Split text by lines to process blockquotes and alerts
         html = html.replace(/(?:^|\n)>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*\n((?:>\s*.*\n?)*)/gmi, (match, type, content) => {
