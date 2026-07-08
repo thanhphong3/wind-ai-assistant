@@ -447,7 +447,7 @@ ${userQuery}`;
                     toolId,
                     toolName,
                     success,
-                    success ? 'Success' : (isApproved ? 'Failed' : 'Rejected')
+                    success ? (['runCommand', 'sendCommandInput', 'listFiles', 'listDir', 'glob'].includes(toolName) ? toolResult : 'Success') : (isApproved ? toolResult : 'Rejected')
                 );
 
                 // Truncate long tool results to save tokens

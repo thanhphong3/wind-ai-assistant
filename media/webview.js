@@ -2792,11 +2792,9 @@
             if (body) {
                 const wasNearBottom = userAtBottom;
 
-                body.classList.add('hidden'); // Collapse the body when finalized
                 const activeDetails = body.querySelectorAll('details.streaming');
                 activeDetails.forEach(details => {
                     details.classList.remove('streaming');
-                    details.open = false;
                     const activeContent = details.querySelector('.thinking-content, .reasoning-content');
                     if (activeContent) {
                         activeContent.classList.remove('streaming');
@@ -2813,7 +2811,7 @@
             }
             const arrow = currentWorkedCard.querySelector('.worked-card-arrow');
             if (arrow) {
-                arrow.textContent = '▶'; // Reset the arrow to collapsed state
+                arrow.textContent = '▼'; // Keep expanded arrow state
             }
             currentWorkedCard = null;
         }
@@ -2832,7 +2830,7 @@
         
         currentWorkedCard.innerHTML = `
             <div class="worked-card-header">
-                <span class="worked-card-arrow">${isRestoringSession ? '▶' : '▼'}</span>
+                <span class="worked-card-arrow">▼</span>
                 <span class="worked-card-icon">⚙️</span>
                 <span class="worked-card-title">${isRestoringSession ? 'Worked' : 'Worked for 0s'}</span>
                 <span class="worked-card-status">
@@ -2840,7 +2838,7 @@
                     <span class="worked-card-status-label ${isRestoringSession ? '' : 'hidden'}">✓</span>
                 </span>
             </div>
-            <div class="worked-card-body ${isRestoringSession ? 'hidden' : ''}"></div>
+            <div class="worked-card-body"></div>
         `;
         
         const header = currentWorkedCard.querySelector('.worked-card-header');
@@ -3371,6 +3369,7 @@
         const card = document.createElement('div');
         card.classList.add('tool-call-card');
         card.id = `tool-call-${toolId}`;
+        card.setAttribute('data-tool-name', toolName);
 
         let args = {};
         try {
@@ -3380,36 +3379,34 @@
         }
 
         let actionText = '';
-        if (toolName === 'writeFile') {
-            actionText = `Creating/Writing file <strong>${escapeHtml(args.relativeFilePath || '')}</strong>`;
-        } else if (toolName === 'readFile') {
-            if (args.startLine !== undefined && args.endLine !== undefined) {
-                actionText = `Reading file <strong>${escapeHtml(args.relativeFilePath || '')}</strong> (lines ${args.startLine}-${args.endLine})`;
-            } else {
-                actionText = `Reading file <strong>${escapeHtml(args.relativeFilePath || '')}</strong>`;
-            }
+        if (toolName === 'writeFile' || toolName === 'replaceFileContent' || toolName === 'multiReplaceFileContent' || toolName === 'writeToFile') {
+            actionText = `<strong>Write</strong> <code>${escapeHtml(args.relativeFilePath || args.TargetFile || '')}</code>`;
+        } else if (toolName === 'readFile' || toolName === 'viewFile') {
+            actionText = `<strong>Read</strong> <code>${escapeHtml(args.relativeFilePath || args.AbsolutePath || '')}</code>`;
         } else if (toolName === 'runCommand') {
-            if (args.runInBackground) {
-                actionText = `Running command in background: <code>${escapeHtml(args.command || '')}</code>`;
-            } else {
-                actionText = `Running command: <code>${escapeHtml(args.command || '')}</code>`;
-            }
+            actionText = `<strong>Run command</strong> <code>${escapeHtml(args.command || args.CommandLine || '')}</code>`;
         } else if (toolName === 'listFiles') {
-            actionText = `Listing workspace files`;
+            actionText = `<strong>List files</strong> <code>**/*</code>`;
         } else if (toolName === 'listDir') {
-            actionText = `Listing directory contents of <strong>${escapeHtml(args.relativeDirPath || '.')}</strong>`;
+            actionText = `<strong>List directory</strong> <code>${escapeHtml(args.relativeDirPath || args.DirectoryPath || '.')}</code>`;
         } else if (toolName === 'searchWeb') {
-            actionText = `Searching the web for: <strong>"${escapeHtml(args.query || '')}"</strong>`;
+            actionText = `<strong>Search</strong> <code>"${escapeHtml(args.query || '')}"</code>`;
         } else if (toolName === 'getCommandStatus') {
-            actionText = `Checking status of background command <code>${escapeHtml(args.commandId || '')}</code>`;
+            actionText = `<strong>Status</strong> <code>${escapeHtml(args.commandId || args.TaskId || '')}</code>`;
         } else if (toolName === 'sendCommandInput') {
             if (args.terminate) {
-                actionText = `Terminating background command <code>${escapeHtml(args.commandId || '')}</code>`;
+                actionText = `<strong>Terminate</strong> <code>${escapeHtml(args.commandId || args.TaskId || '')}</code>`;
             } else {
-                actionText = `Sending input to background command <code>${escapeHtml(args.commandId || '')}</code>`;
+                actionText = `<strong>Input</strong> <code>${escapeHtml(args.commandId || args.TaskId || '')}</code>`;
             }
+        } else if (toolName === 'glob') {
+            actionText = `<strong>Glob</strong> <code>"${escapeHtml(args.pattern || '')}"</code>`;
+        } else if (toolName === 'grepSearch' || toolName === 'ripgrep') {
+            actionText = `<strong>Search files</strong> <code>"${escapeHtml(args.query || args.Query || '')}"</code>`;
         } else {
-            actionText = `Running tool: <strong>${escapeHtml(toolName)}</strong>`;
+            // Capitalize first letter of toolName
+            const displayName = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+            actionText = `<strong>${escapeHtml(displayName)}</strong>`;
         }
 
         card.innerHTML = `
@@ -3418,6 +3415,7 @@
                 <div class="tool-action-text">${actionText}</div>
                 <div class="tool-actions-inline" id="tool-footer-${toolId}"></div>
             </div>
+            <div class="tool-call-subtext hidden"></div>
             <div class="tool-error-container hidden"></div>
         `;
 
@@ -3470,7 +3468,7 @@
                     icon.className = 'tool-status-icon running';
                 }
                 vscode.postMessage({ type: 'approveTool', toolId: toolId });
-                footer.innerHTML = '<span class="tool-status-label approved">✓ Approved</span>';
+                footer.innerHTML = '<span class="tool-status-label approved">Approved</span>';
                 
                 const wlContainer = card.querySelector('.sandbox-whitelist-container');
                 if (wlContainer) wlContainer.classList.add('hidden');
@@ -3487,7 +3485,7 @@
                     icon.className = 'tool-status-icon failed';
                 }
                 vscode.postMessage({ type: 'rejectTool', toolId: toolId });
-                footer.innerHTML = '<span class="tool-status-label rejected">✗ Rejected</span>';
+                footer.innerHTML = '<span class="tool-status-label rejected">Rejected</span>';
                 
                 const wlContainer = card.querySelector('.sandbox-whitelist-container');
                 if (wlContainer) wlContainer.classList.add('hidden');
@@ -3526,7 +3524,83 @@
         const threshold = 15;
         const bodyAtBottom = body ? (body.scrollHeight - body.clientHeight - body.scrollTop <= threshold) : false;
 
-        if (!success) {
+        const toolName = card.getAttribute('data-tool-name');
+        
+        if (!success && resultMessage) {
+            const subtextEl = card.querySelector('.tool-call-subtext');
+            if (subtextEl) {
+                const actionTextEl = card.querySelector('.tool-action-text');
+                const verb = actionTextEl ? actionTextEl.textContent.split(' ')[0] : 'Action';
+                subtextEl.textContent = `${verb} failed`;
+                subtextEl.classList.remove('hidden');
+            }
+            
+            const errContainer = card.querySelector('.tool-error-container');
+            if (errContainer) {
+                errContainer.innerHTML = `<pre class="tool-error">${escapeHtml(resultMessage)}</pre>`;
+                errContainer.classList.remove('hidden');
+            }
+        }
+        
+        if (success) {
+            if ((toolName === 'runCommand' || toolName === 'sendCommandInput') && resultMessage) {
+                // Remove previous output container if exists
+                const oldOut = card.querySelector('.tool-output-container');
+                if (oldOut) oldOut.remove();
+
+                const outContainer = document.createElement('div');
+                outContainer.className = 'tool-output-container';
+                outContainer.innerHTML = `<pre class="tool-output">${escapeHtml(resultMessage)}</pre>`;
+                card.appendChild(outContainer);
+            } else if ((toolName === 'listFiles' || toolName === 'glob') && resultMessage) {
+                const lines = resultMessage.trim().split('\n');
+                const fileLines = lines.filter(l => l.trim() && !l.includes('[Warning') && !l.includes('Error'));
+                const fileCount = fileLines.length;
+
+                const summaryEl = document.createElement('div');
+                summaryEl.className = 'tool-summary-text';
+                summaryEl.textContent = `Found ${fileCount} file${fileCount !== 1 ? 's' : ''}`;
+                card.appendChild(summaryEl);
+            } else if (toolName === 'listDir' && resultMessage) {
+                let itemCount = 0;
+                try {
+                    const parsed = JSON.parse(resultMessage);
+                    if (Array.isArray(parsed)) {
+                        itemCount = parsed.length;
+                    } else if (parsed && typeof parsed === 'object') {
+                        itemCount = Object.keys(parsed).length;
+                    }
+                } catch (e) {
+                    const lines = resultMessage.trim().split('\n');
+                    itemCount = lines.filter(l => l.trim()).length;
+                }
+
+                const summaryEl = document.createElement('div');
+                summaryEl.className = 'tool-summary-text';
+                summaryEl.textContent = `Found ${itemCount} item${itemCount !== 1 ? 's' : ''}`;
+                card.appendChild(summaryEl);
+            } else if ((toolName === 'grepSearch' || toolName === 'ripgrep') && resultMessage) {
+                let matchCount = 0;
+                try {
+                    const parsed = JSON.parse(resultMessage);
+                    if (Array.isArray(parsed)) {
+                        matchCount = parsed.length;
+                    } else if (parsed.results && Array.isArray(parsed.results)) {
+                        matchCount = parsed.results.length;
+                    } else if (parsed && typeof parsed === 'object') {
+                        matchCount = Object.keys(parsed).length;
+                    }
+                } catch (e) {
+                    const lines = resultMessage.trim().split('\n');
+                    matchCount = lines.filter(l => l.trim()).length;
+                }
+
+                const summaryEl = document.createElement('div');
+                summaryEl.className = 'tool-summary-text';
+                summaryEl.textContent = `Found ${matchCount} match${matchCount !== 1 ? 'es' : ''}`;
+                card.appendChild(summaryEl);
+            }
+        } else {
             const errContainer = card.querySelector('.tool-error-container');
             if (errContainer) {
                 errContainer.classList.remove('hidden');
