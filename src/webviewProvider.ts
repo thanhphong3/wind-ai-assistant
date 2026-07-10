@@ -1724,7 +1724,7 @@ ${errorCode}
         });
 
         this._suppressStreaming = false;
-        this._streamAsThought = (targetMode === 'agent' || targetMode === 'plan' || targetMode === 'auto' || targetMode === 'goal' || targetMode === 'grill');
+        this._streamAsThought = (targetMode === 'plan' || targetMode === 'goal' || targetMode === 'grill');
         if (targetMode === 'plan') {
             this._currentThreadTitle = 'Analyzing Workspace & Drafting Plan';
         } else if (targetMode === 'agent') {
@@ -2589,6 +2589,7 @@ Provide a brief summary of the completed work.
 - **What was tested**: Descriptions of what features were tested.
 - **Validation results**: Results of running builds, compiles, or manual checks.
 
+CRITICAL: Do NOT copy-paste, output, or generate the actual code content, file contents, or source code snippets of the files in the walkthrough. The walkthrough must contain only high-level textual summaries and list the files.
 Keep it structured, clear, and professional. Do NOT run any tools or include any external text.`;
                     this._currentThreadTitle = 'Generating Walkthrough';
                     this._suppressStreaming = false;
@@ -3064,6 +3065,7 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
     }
 
     private _getAgentCallbacks(sessionId: string) {
+        let isInsideThoughtTag = false;
         return {
             onKeySuccess: (keyIndex: number) => {
                 if (this._activeConfigName) {
@@ -3104,14 +3106,25 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
             onStreamChunk: (chunkText: string) => {
                 if (this._suppressStreaming) return;
                 if (this._activeSessionId === sessionId) {
+                    if (chunkText.includes('<thought>') || chunkText.includes('<thinking>') || chunkText.includes('<think>')) {
+                        isInsideThoughtTag = true;
+                    }
+
+                    const type = (this._streamAsThought || isInsideThoughtTag) ? 'streamThought' : 'streamChunk';
+
+                    if (chunkText.includes('</thought>') || chunkText.includes('</thinking>') || chunkText.includes('</think>')) {
+                        isInsideThoughtTag = false;
+                    }
+
                     this._view?.webview.postMessage({
-                        type: this._streamAsThought ? 'streamThought' : 'streamChunk',
+                        type,
                         text: chunkText,
                         title: this._currentThreadTitle
                     });
                 }
             },
             onStreamThought: (chunkText: string) => {
+                this._streamAsThought = false; // Disable default streamAsThought if we have native reasoning chunks
                 if (this._suppressStreaming) return;
                 if (this._activeSessionId === sessionId) {
                     this._view?.webview.postMessage({

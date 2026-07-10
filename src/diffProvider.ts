@@ -263,9 +263,9 @@ export class DiffManager implements vscode.CodeLensProvider {
         this._actionButtonDecorationType = vscode.window.createTextEditorDecorationType({
             after: {
                 contentIconPath: vscode.Uri.parse(getActionButtonSvg()),
-                margin: '0 0 0 24px',
-                width: '225px',
-                height: '24px'
+                margin: '0 0 0 1.5em',
+                width: '11.25em',
+                height: '1.2em'
             }
         });
     }

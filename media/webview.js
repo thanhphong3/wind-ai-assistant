@@ -2542,7 +2542,7 @@
     function formatMarkdown(text, skipLinkify = false) {
         if (!text) return '';
         
-        let processedText = text;
+        let processedText = text.replace(/\r\n/g, '\n');
 
         const codeBlocks = [];
 
@@ -2594,8 +2594,8 @@
             return placeholder;
         });
 
-        // Extract and format tables
-        html = html.replace(/(?:^|\n)([ \t]*\|[^\n]+\|[ \t]*\r?\n[ \t]*\|[ \t]*:?---[-| :]*\|[ \t]*\r?\n(?:[ \t]*\|[^\n]+\|[ \t]*(?:\r?\n|$))*)/g, (match, tableContent) => {
+        // Extract and format tables (including those without leading/trailing pipes)
+        html = html.replace(/(?:^|\n)([ \t]*\|?[^\n]+\|[^\n]*\n[ \t]*\|?[ \t]*:?---[-| :]*\n(?:[ \t]*\|?[^\n]+\|[^\n]*(?:\n|$))*)/g, (match, tableContent) => {
             const lines = tableContent.trim().split('\n').map(l => l.trim());
             if (lines.length < 2) return match;
 
@@ -2603,8 +2603,18 @@
             const separatorRow = lines[1];
             const dataRows = lines.slice(2);
 
-            // Parse headers
-            const headers = headerRow.split('|').map(h => h.trim()).filter((h, idx, arr) => idx > 0 && idx < arr.length - 1);
+            const parseRow = (rowText) => {
+                let cols = rowText.split('|').map(c => c.trim());
+                if (cols.length > 0 && cols[0] === '') {
+                    cols.shift();
+                }
+                if (cols.length > 0 && cols[cols.length - 1] === '') {
+                    cols.pop();
+                }
+                return cols;
+            };
+
+            const headers = parseRow(headerRow);
             
             // Check if separator is valid
             const isSeparator = /^[|\s:-]+$/.test(separatorRow);
@@ -2616,7 +2626,7 @@
 
             dataRows.forEach(row => {
                 if (!row.trim()) return;
-                const cols = row.split('|').map(c => c.trim()).filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
+                const cols = parseRow(row);
                 tableHtml += '<tr>' + cols.map(c => `<td>${c}</td>`).join('') + '</tr>';
             });
 
@@ -2716,16 +2726,16 @@
                 const content = numberMatch[2];
                 processedLines.push(`<li>${content}</li>`);
             } else {
-                if (currentListType) {
-                    processedLines.push(`</${currentListType}>`);
-                    currentListType = null;
-                }
-                
-                // For non-list lines, add line breaks properly
-                if (line.trim() === '') {
-                    processedLines.push('<br/>');
-                } else {
+                if (line.trim() !== '') {
+                    if (currentListType) {
+                        processedLines.push(`</${currentListType}>`);
+                        currentListType = null;
+                    }
                     processedLines.push(line + '<br/>');
+                } else {
+                    if (!currentListType) {
+                        processedLines.push('<br/>');
+                    }
                 }
             }
         }
@@ -2737,13 +2747,19 @@
         // Join processed lines
         html = processedLines.join('\n');
 
-        // Remove double <br/> caused by empty lines getting <br/>
-        html = html.replace(/<br\/><br\/>/g, '<br/>');
-
         // Restore the code blocks
         for (let i = 0; i < codeBlocks.length; i++) {
             html = html.replace(`___WIND_CODE_BLOCK_PLACEHOLDER_${i}___`, codeBlocks[i]);
         }
+
+        // Remove <br/> right before block elements
+        html = html.replace(/<br\/>\s*(?=<(?:\/?(?:ul|ol|table|h[1-6]|pre|div|blockquote))(?:\s|>))/gi, '');
+        
+        // Remove <br/> right after block elements
+        html = html.replace(/(<\/(?:ul|ol|table|h[1-6]|pre|div|blockquote)>\s*)<br\/>/gi, '$1');
+
+        // Collapse consecutive breaks down to at most two
+        html = html.replace(/(?:<br\/>\s*){3,}/gi, '<br/><br/>');
 
         if (!skipLinkify) {
             html = linkifyFilePaths(html);
@@ -2792,9 +2808,10 @@
             if (body) {
                 const wasNearBottom = userAtBottom;
 
-                const activeDetails = body.querySelectorAll('details.streaming');
+                const activeDetails = body.querySelectorAll('details');
                 activeDetails.forEach(details => {
                     details.classList.remove('streaming');
+                    details.open = false;
                     const activeContent = details.querySelector('.thinking-content, .reasoning-content');
                     if (activeContent) {
                         activeContent.classList.remove('streaming');
@@ -3525,19 +3542,27 @@
         const bodyAtBottom = body ? (body.scrollHeight - body.clientHeight - body.scrollTop <= threshold) : false;
 
         const toolName = card.getAttribute('data-tool-name');
+
+        // Helper: create a Claude Code style result line with ⎿ prefix
+        function createResultLine(text) {
+            const line = document.createElement('div');
+            line.className = 'tool-result-line';
+            line.innerHTML = `<span class="tool-result-bracket">⎿</span><span class="tool-result-text">${escapeHtml(text)}</span>`;
+            return line;
+        }
         
         if (!success && resultMessage) {
             const subtextEl = card.querySelector('.tool-call-subtext');
             if (subtextEl) {
-                const actionTextEl = card.querySelector('.tool-action-text');
-                const verb = actionTextEl ? actionTextEl.textContent.split(' ')[0] : 'Action';
-                subtextEl.textContent = `${verb} failed`;
-                subtextEl.classList.remove('hidden');
+                subtextEl.classList.add('hidden');
             }
             
             const errContainer = card.querySelector('.tool-error-container');
             if (errContainer) {
-                errContainer.innerHTML = `<pre class="tool-error">${escapeHtml(resultMessage)}</pre>`;
+                errContainer.innerHTML = '';
+                const errLine = createResultLine(resultMessage.length > 200 ? resultMessage.substring(0, 200) + '...' : resultMessage);
+                errLine.querySelector('.tool-result-text').style.color = 'var(--danger-color)';
+                errContainer.appendChild(errLine);
                 errContainer.classList.remove('hidden');
             }
         }
@@ -3556,11 +3581,7 @@
                 const lines = resultMessage.trim().split('\n');
                 const fileLines = lines.filter(l => l.trim() && !l.includes('[Warning') && !l.includes('Error'));
                 const fileCount = fileLines.length;
-
-                const summaryEl = document.createElement('div');
-                summaryEl.className = 'tool-summary-text';
-                summaryEl.textContent = `Found ${fileCount} file${fileCount !== 1 ? 's' : ''}`;
-                card.appendChild(summaryEl);
+                card.appendChild(createResultLine(`${fileCount} file${fileCount !== 1 ? 's' : ''}`));
             } else if (toolName === 'listDir' && resultMessage) {
                 let itemCount = 0;
                 try {
@@ -3574,11 +3595,7 @@
                     const lines = resultMessage.trim().split('\n');
                     itemCount = lines.filter(l => l.trim()).length;
                 }
-
-                const summaryEl = document.createElement('div');
-                summaryEl.className = 'tool-summary-text';
-                summaryEl.textContent = `Found ${itemCount} item${itemCount !== 1 ? 's' : ''}`;
-                card.appendChild(summaryEl);
+                card.appendChild(createResultLine(`${itemCount} item${itemCount !== 1 ? 's' : ''}`));
             } else if ((toolName === 'grepSearch' || toolName === 'ripgrep') && resultMessage) {
                 let matchCount = 0;
                 try {
@@ -3594,17 +3611,23 @@
                     const lines = resultMessage.trim().split('\n');
                     matchCount = lines.filter(l => l.trim()).length;
                 }
-
-                const summaryEl = document.createElement('div');
-                summaryEl.className = 'tool-summary-text';
-                summaryEl.textContent = `Found ${matchCount} match${matchCount !== 1 ? 'es' : ''}`;
-                card.appendChild(summaryEl);
+                card.appendChild(createResultLine(`${matchCount} match${matchCount !== 1 ? 'es' : ''}`));
+            } else if ((toolName === 'readFile' || toolName === 'viewFile') && resultMessage) {
+                const lineCount = resultMessage.split('\n').length;
+                card.appendChild(createResultLine(`${lineCount} line${lineCount !== 1 ? 's' : ''}`));
+            } else if ((toolName === 'writeFile' || toolName === 'replaceFileContent' || toolName === 'multiReplaceFileContent' || toolName === 'writeToFile') && resultMessage) {
+                const lineCount = resultMessage.split('\n').length;
+                card.appendChild(createResultLine(`Wrote ${lineCount} line${lineCount !== 1 ? 's' : ''}`));
+            } else if (toolName === 'searchWeb' && resultMessage) {
+                card.appendChild(createResultLine('Search complete'));
             }
         } else {
             const errContainer = card.querySelector('.tool-error-container');
-            if (errContainer) {
+            if (errContainer && !errContainer.children.length) {
+                const errLine = createResultLine(resultMessage || 'Failed');
+                errLine.querySelector('.tool-result-text').style.color = 'var(--danger-color)';
+                errContainer.appendChild(errLine);
                 errContainer.classList.remove('hidden');
-                errContainer.innerHTML = `<pre class="tool-error">${escapeHtml(resultMessage)}</pre>`;
             }
         }
         
@@ -4445,20 +4468,27 @@
                     removeThinkingBubble();
 
                     if (currentWorkedCard) {
-                        const activeDetails = currentWorkedCard.querySelector('.worked-card-body details.thinking-details.streaming');
+                        const activeDetails = currentWorkedCard.querySelector('.worked-card-body details.streaming');
                         if (activeDetails) {
-                            if (message.reasoningContent) {
-                                activeDetails.classList.remove('streaming');
-                                activeDetails.open = false;
-                                const activeContent = activeDetails.querySelector('.thinking-content');
-                                if (activeContent) {
-                                    activeContent.classList.remove('streaming');
-                                    activeContent.innerHTML = formatMarkdown(message.reasoningContent, false);
-                                }
-                            } else {
-                                activeDetails.remove();
-                                if (currentWorkedCard.querySelector('.worked-card-body').children.length === 0) {
-                                    currentWorkedCard.style.display = 'none';
+                            activeDetails.classList.remove('streaming');
+                            activeDetails.open = false;
+                            const activeContent = activeDetails.querySelector('.thinking-content, .reasoning-content');
+                            if (activeContent) {
+                                activeContent.classList.remove('streaming');
+                                const cursor = activeContent.querySelector('.typing-cursor');
+                                if (cursor) cursor.remove();
+                                
+                                const finalContent = message.reasoningContent || currentStreamingText;
+                                if (finalContent) {
+                                    activeContent.innerHTML = formatMarkdown(finalContent, false);
+                                } else {
+                                    const rawText = activeContent.textContent || '';
+                                    if (rawText.trim() === '') {
+                                        activeDetails.remove();
+                                        if (currentWorkedCard.querySelector('.worked-card-body').children.length === 0) {
+                                            currentWorkedCard.style.display = 'none';
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -4485,20 +4515,27 @@
                     removeThinkingBubble();
                     if (message.sender === 'agent') {
                         if (currentWorkedCard) {
-                            const activeDetails = currentWorkedCard.querySelector('.worked-card-body details.thinking-details.streaming');
+                            const activeDetails = currentWorkedCard.querySelector('.worked-card-body details.streaming');
                             if (activeDetails) {
-                                if (message.reasoningContent) {
-                                    activeDetails.classList.remove('streaming');
-                                    activeDetails.open = false;
-                                    const activeContent = activeDetails.querySelector('.thinking-content');
-                                    if (activeContent) {
-                                        activeContent.classList.remove('streaming');
-                                        activeContent.innerHTML = formatMarkdown(message.reasoningContent, false);
-                                    }
-                                } else {
-                                    activeDetails.remove();
-                                    if (currentWorkedCard.querySelector('.worked-card-body').children.length === 0) {
-                                        currentWorkedCard.style.display = 'none';
+                                activeDetails.classList.remove('streaming');
+                                activeDetails.open = false;
+                                const activeContent = activeDetails.querySelector('.thinking-content, .reasoning-content');
+                                if (activeContent) {
+                                    activeContent.classList.remove('streaming');
+                                    const cursor = activeContent.querySelector('.typing-cursor');
+                                    if (cursor) cursor.remove();
+                                    
+                                    const finalContent = message.reasoningContent || currentStreamingText;
+                                    if (finalContent) {
+                                        activeContent.innerHTML = formatMarkdown(finalContent, false);
+                                    } else {
+                                        const rawText = activeContent.textContent || '';
+                                        if (rawText.trim() === '') {
+                                            activeDetails.remove();
+                                            if (currentWorkedCard.querySelector('.worked-card-body').children.length === 0) {
+                                                currentWorkedCard.style.display = 'none';
+                                            }
+                                        }
                                     }
                                 }
                             }

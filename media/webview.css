@@ -1,24 +1,25 @@
 :root {
-    --bg-primary: #000000;
-    --bg-secondary: #141416;
-    --bg-hover: #202024;
-    --border-color: #1f1f22;
-    --text-primary: #e6e6e8;
-    --text-secondary: #a0a0a5;
-    --text-muted: #8e8e93;
+    --bg-primary: #0b0a08;
+    --bg-secondary: #131210;
+    --bg-hover: #1c1a17;
+    --border-color: #2b2926;
+    --text-primary: #f7f4eb;
+    --text-secondary: #b5b0a7;
+    --text-muted: #858076;
     
-    --accent-blue: #007aff;
-    --accent-gradient: linear-gradient(74deg, #007aff 0%, #5856d6 50%, #af52de 100%);
-    --accent-glow: rgba(88, 86, 214, 0.15);
+    --accent-blue: #cc5b36;
+    --accent-gradient: linear-gradient(74deg, #cc5b36 0%, #e07a5f 50%, #f4a261 100%);
+    --accent-glow: rgba(204, 91, 54, 0.15);
     
-    --bubble-user: #141416;
+    --bubble-user: #1a1916;
     --bubble-agent: transparent;
     
-    --font-family: "Outfit", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --font-mono: "Consolas", "Fira Code", "JetBrains Mono", Courier New, monospace;
-    --success-color: #30d158;
-    --warning-color: #ff9f0a;
-    --danger-color: #ff453a;
+    --font-mono: "Google Sans Mono", "Consolas", "Fira Code", "JetBrains Mono", "Courier New", monospace;
+    --font-family: "Google Sans", "Google Sans Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --success-color: #30A46C;
+    --warning-color: #FFB224;
+    --danger-color: #E5484D;
+    --accent-coral: #cc5b36;
 }
 
 * {
@@ -205,17 +206,17 @@ body {
 /* Message Layout */
 .message-row {
     display: flex;
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: 0;
+    margin-bottom: 16px;
     width: 100%;
-    animation: fadeSlide 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: fadeSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     flex-shrink: 0;
 }
 
 @keyframes fadeSlide {
     from {
         opacity: 0;
-        transform: translateY(12px);
+        transform: translateY(6px);
     }
     to {
         opacity: 1;
@@ -225,9 +226,9 @@ body {
 
 .typing-cursor {
     display: inline-block;
-    width: 6px;
+    width: 2px;
     height: 14px;
-    background-color: var(--text-primary);
+    background-color: var(--accent-coral);
     animation: blink 1s step-end infinite;
     vertical-align: middle;
     margin-left: 2px;
@@ -260,18 +261,19 @@ body {
 }
 
 .message-bubble {
-    font-family: var(--font-mono);
-    font-size: 12.5px;
-    line-height: 1.6;
+    font-family: var(--font-family);
+    font-size: 13px;
+    line-height: 1.65;
     word-break: break-word;
 }
 
+/* User message: Claude Code style - dark block */
 .message-row.user .message-bubble {
-    background: #1e1e1e;
+    background: var(--bubble-user);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: 8px;
     color: var(--text-primary);
-    padding: 8px 12px;
+    padding: 10px 14px;
     width: 100%;
     font-family: var(--font-family);
     font-size: 13px;
@@ -281,6 +283,7 @@ body {
     display: none;
 }
 
+/* Agent message: clean text, no bubble */
 .message-row.agent .message-bubble {
     background: transparent;
     color: var(--text-primary);
@@ -300,12 +303,12 @@ body {
     min-width: 80%;
     border-collapse: collapse;
     margin: 16px 0;
-    font-family: 'Consolas', 'Courier New', Courier, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
-    border: 1px solid #555;
+    border: 1px solid var(--border-color);
 }
 .message-bubble th {
-    border: 1px solid #555;
+    border: 1px solid var(--border-color);
     padding: 8px 12px;
     text-align: left;
     color: var(--text-primary);
@@ -314,29 +317,29 @@ body {
 }
 .message-bubble td {
     padding: 6px 12px;
-    border: 1px solid #444;
+    border: 1px solid var(--border-color);
     color: var(--text-secondary);
 }
 
 .message-bubble pre {
-    background: #18191a;
+    background: #111113;
     border: 1px solid var(--border-color);
     border-radius: 6px;
     padding: 12px;
     overflow-x: auto;
-    font-family: 'Consolas', 'Courier New', Courier, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
-    line-height: 1.3;
+    line-height: 1.4;
     margin: 12px 0;
 }
 
 .message-bubble code {
-    background: transparent;
-    padding: 0 2px;
-    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
     font-family: var(--font-mono);
-    font-size: 12.5px;
-    color: #e5c07b;
+    font-size: 12px;
+    color: var(--text-primary);
 }
 
 .message-bubble pre code {
@@ -363,9 +366,9 @@ body {
 .message-bubble blockquote {
     margin: 12px 0;
     padding: 8px 14px;
-    background: rgba(66, 133, 244, 0.08);
-    border-left: 4px solid var(--accent-blue);
-    border-radius: 0 6px 6px 0;
+    background: rgba(217, 119, 87, 0.06);
+    border-left: 3px solid var(--accent-coral);
+    border-radius: 0 4px 4px 0;
     color: var(--text-secondary);
     font-style: italic;
 }
@@ -374,25 +377,25 @@ body {
     color: var(--text-primary);
 }
 
-/* Tool Execution Card (Compact Style) */
+/* Tool Execution Card - Claude Code Style */
 .tool-call-card {
     background: transparent;
     border: none;
-    padding: 4px 0;
-    margin: 4px 0;
+    padding: 3px 0;
+    margin: 2px 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     align-self: flex-start;
     width: 100%;
-    animation: fadeSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: fadeSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     flex-shrink: 0;
 }
 
 .tool-call-main {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     width: 100%;
 }
 
@@ -403,14 +406,15 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-family: var(--font-family);
 }
 
 .tool-call-subtext {
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-muted);
     margin-left: 0;
-    margin-top: 2px;
-    margin-bottom: 2px;
+    margin-top: 1px;
+    margin-bottom: 1px;
 }
 
 .tool-call-subtext.hidden {
@@ -423,44 +427,61 @@ body {
     gap: 6px;
 }
 
+/* Claude Code style: ⏺ character-based status icon */
 .tool-status-icon {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    display: block;
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    display: inline-block;
     flex-shrink: 0;
-    font-size: 0;
-    margin-right: 2px;
+    font-size: 10px;
+    margin-right: 0;
+    background: none !important;
+    line-height: 1;
+}
+
+.tool-status-icon::before {
+    display: inline !important;
 }
 
 .tool-status-icon.pending {
-    background-color: var(--text-secondary);
-    opacity: 0.5;
+    color: var(--warning-color);
+    background: none !important;
+}
+.tool-status-icon.pending::before {
+    content: '⏺';
 }
 
 .tool-status-icon.running {
-    background-color: var(--accent-blue);
+    color: var(--accent-coral);
+    background: none !important;
     animation: blink 1s step-end infinite;
 }
-
 .tool-status-icon.running::before {
-    display: none;
+    content: '⏺';
+    display: inline !important;
 }
 
 .tool-status-icon.completed {
-    background-color: var(--success-color);
+    color: var(--success-color);
+    background: none !important;
 }
-
-.tool-status-icon.completed::after {
-    display: none;
+.tool-status-icon.completed::before {
+    content: '✓';
+    font-weight: 700;
 }
 
 .tool-status-icon.failed {
-    background-color: var(--danger-color);
+    color: var(--danger-color);
+    background: none !important;
+}
+.tool-status-icon.failed::before {
+    content: '✗';
+    font-weight: 700;
 }
 
-.tool-status-icon.failed::after {
-    display: none;
+.tool-status-icon::after {
+    display: none !important;
 }
 
 .tool-status-label {
@@ -474,36 +495,62 @@ body {
     color: var(--danger-color);
 }
 
+/* Tool result line with ⎿ prefix */
+.tool-result-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-left: 2px;
+    padding: 1px 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--font-family);
+}
 
+.tool-result-bracket {
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.2;
+    flex-shrink: 0;
+    opacity: 0.6;
+}
+
+.tool-result-text {
+    flex: 1;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
 
 .tool-btn {
-    padding: 4px 10px;
-    border-radius: 12px;
+    padding: 3px 10px;
+    border-radius: 4px;
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
-    border: 1px solid transparent;
+    border: 1px solid var(--border-color);
     font-family: var(--font-family);
     transition: all 0.15s ease;
 }
 
 .tool-btn.approve {
-    background: var(--accent-blue);
-    color: white;
+    background: rgba(48, 164, 108, 0.15);
+    color: var(--success-color);
+    border-color: rgba(48, 164, 108, 0.3);
 }
 
 .tool-btn.approve:hover {
-    background: #357ae8;
+    background: rgba(48, 164, 108, 0.25);
 }
 
 .tool-btn.reject {
-    background: transparent;
-    border-color: var(--border-color);
-    color: var(--text-secondary);
+    background: rgba(229, 72, 77, 0.10);
+    border-color: rgba(229, 72, 77, 0.25);
+    color: var(--danger-color);
 }
 
 .tool-btn.reject:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(229, 72, 77, 0.20);
     color: var(--text-primary);
 }
 
@@ -1460,7 +1507,7 @@ textarea::placeholder {
     transform: translateY(0);
 }
 
-/* Worked Card - Layout Only Wrapper */
+/* Worked Card - Claude Code Style */
 .worked-card {
     background: transparent;
     border: none;
@@ -1472,55 +1519,49 @@ textarea::placeholder {
     margin-left: 0;
     box-shadow: none;
     flex-shrink: 0;
-    display: contents; /* Let children layout directly under chat container */
+    display: contents;
 }
 
 .worked-card-header {
-    display: none !important; /* Hide the worked card header completely */
+    display: none !important;
 }
 
 .worked-card-body {
-    padding: 0 0 0 12px;
-    margin: 6px 0;
+    padding: 0;
+    margin: 4px 0;
     background: transparent;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     font-size: 13px;
     color: var(--text-secondary);
     position: relative;
 }
 
-/* Timeline Vertical Line */
+/* Remove timeline vertical line */
 .worked-card-body::before {
-    content: '';
-    position: absolute;
-    left: 12px; /* Centered with status dots */
-    top: 4px;
-    bottom: 4px;
-    width: 1px;
-    background-color: var(--border-color);
-    z-index: 1;
+    display: none;
 }
 
-/* Collapsible Thinking Timeline Item */
+/* Collapsible Thinking - Claude Code Style */
 details.thinking-details,
 details.reasoning-details {
     position: relative;
-    padding-left: 24px;
-    margin: 4px 0;
+    padding-left: 0;
+    margin: 2px 0;
 }
 
 .thinking-summary {
     cursor: pointer;
     display: flex;
     align-items: center;
-    font-family: var(--font-mono);
+    font-family: var(--font-family);
     font-size: 12.5px;
     color: var(--text-muted);
     user-select: none;
     outline: none;
-    padding: 4px 0;
+    padding: 3px 0;
+    gap: 6px;
 }
 
 .thinking-summary::-webkit-details-marker {
@@ -1532,41 +1573,48 @@ details.reasoning-details {
     display: none !important;
 }
 
-/* Thinking Gray Status Dot */
+/* Thinking icon - use ⏺ style */
 .thinking-summary-icon {
-    position: absolute;
-    left: 8px;
-    top: 9px;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background-color: var(--text-muted);
+    position: static;
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    background-color: transparent !important;
     font-size: 0 !important;
-    display: block;
-    z-index: 2;
+    display: inline-block;
+    color: var(--text-muted);
+    flex-shrink: 0;
 }
 
-/* Active/Streaming Thinking Blue Status Dot */
+.thinking-summary-icon::before {
+    content: '⏺';
+    font-size: 10px !important;
+    display: inline-block !important;
+}
+
+/* Active/Streaming Thinking */
 details.streaming .thinking-summary-icon {
-    background-color: var(--accent-blue) !important;
+    background-color: transparent !important;
+    color: var(--accent-coral) !important;
     animation: blink 1s step-end infinite !important;
 }
 
 .thinking-summary-text::after {
-    content: ' >';
-    font-weight: bold;
+    content: ' ▶';
+    font-size: 8px;
     color: var(--text-muted);
     margin-left: 4px;
 }
 
 details[open] .thinking-summary-text::after {
-    content: ' v';
+    content: ' ▼';
+    font-size: 8px;
 }
 
 .thinking-content,
 .reasoning-content {
     padding: 8px 12px;
-    margin: 4px 0 12px 12px;
+    margin: 4px 0 8px 18px;
     color: var(--text-muted);
     font-family: var(--font-mono);
     font-size: 11.5px;
@@ -1575,11 +1623,11 @@ details[open] .thinking-summary-text::after {
     line-height: 1.5;
 }
 
-/* Tool Call Timeline Item */
+/* Tool Call Card - Claude Code Flat Style (override) */
 .tool-call-card {
     position: relative;
-    padding: 2px 0 2px 24px;
-    margin: 2px 0;
+    padding: 2px 0;
+    margin: 1px 0;
     background: transparent;
     border: none;
     box-shadow: none;
@@ -1590,12 +1638,12 @@ details[open] .thinking-summary-text::after {
 .tool-call-main {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
 }
 
 .tool-action-text {
-    font-size: 12.5px;
+    font-size: 13px;
     font-family: var(--font-family);
     color: var(--text-primary);
     flex: 1;
@@ -1606,7 +1654,7 @@ details[open] .thinking-summary-text::after {
 
 .tool-action-text strong {
     font-weight: 600;
-    color: #ffffff;
+    color: var(--text-primary);
 }
 
 .tool-action-text code {
@@ -1614,67 +1662,89 @@ details[open] .thinking-summary-text::after {
     padding: 0;
     border-radius: 0;
     font-family: var(--font-mono);
-    font-size: 11.5px;
-    color: var(--text-muted);
+    font-size: 12px;
+    color: var(--text-secondary);
 }
 
 .tool-summary-text {
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-muted);
-    margin-top: 2px;
-    margin-left: 12px;
+    margin-top: 1px;
+    margin-left: 18px;
     font-family: var(--font-family);
 }
 
-/* Tool status dot positioned on the timeline */
+/* Tool status icon - character based (override) */
 .tool-status-icon {
-    position: absolute;
-    left: 8px;
-    top: 9px;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
+    position: static;
+    width: auto;
+    height: auto;
+    border-radius: 0;
     border: none !important;
     box-shadow: none !important;
-    display: block !important;
-    animation: none !important;
-    z-index: 2;
+    display: inline-block !important;
+    animation: none;
+    z-index: auto;
+    font-size: 10px;
+    line-height: 1;
+    background: none !important;
 }
 
-.tool-status-icon::before,
+.tool-status-icon::before {
+    display: inline !important;
+}
+
 .tool-status-icon::after {
     display: none !important;
 }
 
 .tool-status-icon.pending {
-    background-color: var(--warning-color) !important;
+    background: none !important;
+    color: var(--warning-color);
+}
+.tool-status-icon.pending::before {
+    content: '⏺';
 }
 
 .tool-status-icon.running {
-    background-color: var(--accent-blue) !important;
+    background: none !important;
+    color: var(--accent-coral);
     animation: blink 1s step-end infinite !important;
+}
+.tool-status-icon.running::before {
+    content: '⏺';
 }
 
 .tool-status-icon.completed {
-    background-color: var(--success-color) !important;
+    background: none !important;
+    color: var(--success-color);
+}
+.tool-status-icon.completed::before {
+    content: '✓';
+    font-weight: 700;
 }
 
 .tool-status-icon.failed {
-    background-color: var(--danger-color) !important;
+    background: none !important;
+    color: var(--danger-color);
+}
+.tool-status-icon.failed::before {
+    content: '✗';
+    font-weight: 700;
 }
 
 /* Tool Terminal Output Container */
 .tool-output-container,
 .tool-error-container {
-    background: #1e1e1e;
+    background: #111113;
     border: 1px solid var(--border-color);
     border-radius: 6px;
     padding: 8px 12px;
-    margin-top: 4px;
-    margin-left: 12px;
-    max-height: 240px;
+    margin-top: 2px;
+    margin-left: 18px;
+    max-height: 200px;
     overflow: auto;
-    width: calc(100% - 12px);
+    width: calc(100% - 18px);
     z-index: 5;
 }
 
@@ -1689,12 +1759,12 @@ details[open] .thinking-summary-text::after {
     word-break: break-all;
     font-size: 11.5px;
     font-family: var(--font-mono);
-    color: var(--text-primary);
+    color: var(--text-secondary);
     line-height: 1.45;
 }
 
 .tool-error {
-    color: var(--text-primary);
+    color: var(--danger-color);
 }
 
 .tool-actions-inline {
@@ -1710,32 +1780,32 @@ details[open] .thinking-summary-text::after {
     font-weight: 500;
     cursor: pointer;
     border: 1px solid var(--border-color);
-    font-family: var(--font-mono);
+    font-family: var(--font-family);
     transition: all 0.15s ease;
 }
 
 .tool-btn.approve {
-    background: rgba(48, 209, 88, 0.15);
+    background: rgba(48, 164, 108, 0.15);
     color: var(--success-color);
-    border-color: rgba(48, 209, 88, 0.3);
+    border-color: rgba(48, 164, 108, 0.3);
 }
 
 .tool-btn.approve:hover {
-    background: rgba(48, 209, 88, 0.25);
+    background: rgba(48, 164, 108, 0.25);
 }
 
 .tool-btn.reject {
-    background: rgba(255, 69, 58, 0.15);
+    background: rgba(229, 72, 77, 0.10);
     color: var(--danger-color);
-    border-color: rgba(255, 69, 58, 0.3);
+    border-color: rgba(229, 72, 77, 0.25);
 }
 
 .tool-btn.reject:hover {
-    background: rgba(255, 69, 58, 0.25);
+    background: rgba(229, 72, 77, 0.20);
 }
 
 .tool-status-label {
-    font-family: var(--font-mono);
+    font-family: var(--font-family);
     font-size: 11px;
     font-weight: 600;
 }
@@ -1879,7 +1949,7 @@ details[open] .thinking-summary-text::after {
     gap: 6px;
     font-size: 10px;
     font-weight: 600;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     flex-shrink: 0;
     margin-right: 4px;
 }
@@ -3153,7 +3223,7 @@ details[open] .thinking-summary-text::after {
     border-radius: 8px;
     padding: 12px;
     overflow-x: auto;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     font-size: 11.5px;
     margin: 8px 0;
     color: var(--text-primary);
@@ -3163,7 +3233,7 @@ details[open] .thinking-summary-text::after {
     background: rgba(234, 67, 53, 0.08);
     padding: 2px 4px;
     border-radius: 4px;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     font-size: 11.5px;
     color: #f28b82;
 }
@@ -3418,7 +3488,7 @@ details[open] .thinking-summary-text::after {
 }
 
 .permission-scope-text {
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     font-size: 11.5px;
     color: var(--text-primary);
 }
