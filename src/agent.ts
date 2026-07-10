@@ -1240,6 +1240,24 @@ function parseResilientJSON(text: string, startIdx: number = 0): { obj: any; end
             i++;
         }
     }
+
+    function isValidClosingQuote(quoteIdx: number, expectKey: boolean, inArray: boolean): boolean {
+        let nextIdx = quoteIdx + 1;
+        while (nextIdx < text.length && /\s/.test(text[nextIdx])) {
+            nextIdx++;
+        }
+        if (nextIdx >= text.length) {
+            return true;
+        }
+        const nextChar = text[nextIdx];
+        if (expectKey) {
+            return nextChar === ':';
+        } else if (inArray) {
+            return nextChar === ',' || nextChar === ']';
+        } else {
+            return nextChar === ',' || nextChar === '}';
+        }
+    }
     
     function parseValue(inArray: boolean = false): any {
         if (depth > 100) {
@@ -1256,7 +1274,7 @@ function parseResilientJSON(text: string, startIdx: number = 0): { obj: any; end
             } else if (char === '[') {
                 return parseArray();
             } else if (char === '"') {
-                return parseString(inArray);
+                return parseString(false, inArray);
             } else if (char === 't' && text.startsWith('true', i)) {
                 i += 4;
                 return true;
@@ -1298,7 +1316,7 @@ function parseResilientJSON(text: string, startIdx: number = 0): { obj: any; end
                 throw new Error(`Expected '"' at index ${i} but got '${text[i]}'`);
             }
             
-            const key = parseString(false);
+            const key = parseString(true, false);
             skipWhitespace();
             
             if (i >= text.length || text[i] === undefined) {
@@ -1359,7 +1377,7 @@ function parseResilientJSON(text: string, startIdx: number = 0): { obj: any; end
         return arr;
     }
     
-    function parseString(_inArray: boolean = false): string {
+    function parseString(isKey: boolean, inArray: boolean = false): string {
         i++; // skip opening '"'
         
         const contentStart = i;
@@ -1373,9 +1391,11 @@ function parseResilientJSON(text: string, startIdx: number = 0): { obj: any; end
                     k--;
                 }
                 if (backslashCount % 2 === 0) {
-                    const strVal = text.substring(contentStart, i);
-                    i++; // skip closing '"'
-                    return decodeEscapedString(strVal);
+                    if (isValidClosingQuote(i, isKey, inArray)) {
+                        const strVal = text.substring(contentStart, i);
+                        i++; // skip closing '"'
+                        return decodeEscapedString(strVal);
+                    }
                 }
             }
             
