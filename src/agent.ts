@@ -537,6 +537,59 @@ ${userQuery}`;
         }
         const modelsCount = effectiveModels.length;
 
+        // Character-based context window pruning (safeguard against token window overflow)
+        // Computed once before the retry loop since messages don't change between retries.
+        const MAX_RETAINED_CHARS = 240000; // ~60,000 tokens
+        const totalChars = this.messages.reduce((sum, msg) => {
+            let contentStr = '';
+            if (typeof msg.content === 'string') {
+                contentStr = msg.content;
+            } else if (Array.isArray(msg.content)) {
+                contentStr = JSON.stringify(msg.content);
+            }
+            return sum + contentStr.length;
+        }, 0);
+
+        if (totalChars > MAX_RETAINED_CHARS && this.messages.length > 3) {
+            const systemPrompt = this.messages[0];
+            let trimStart = 1;
+            let currentSize = totalChars - (typeof systemPrompt.content === 'string' ? systemPrompt.content.length : JSON.stringify(systemPrompt.content || '').length);
+            
+            // Find a trim point from the beginning such that the remaining suffix is below the character limit
+            // while ensuring we don't slice in the middle of a tool response group.
+            while (trimStart < this.messages.length - 2) {
+                const msgLength = typeof this.messages[trimStart].content === 'string' 
+                    ? this.messages[trimStart].content.length 
+                    : JSON.stringify(this.messages[trimStart].content || '').length;
+                
+                if (currentSize - msgLength <= MAX_RETAINED_CHARS) {
+                    break;
+                }
+                currentSize -= msgLength;
+                trimStart++;
+            }
+
+            // Ensure we don't slice in the middle of a tool response group
+            while (trimStart > 1 && this.messages[trimStart]?.role === 'tool') {
+                trimStart--;
+            }
+
+            if (trimStart > 1) {
+                if (this.messages[trimStart]?.role === 'user') {
+                    this.messages = [systemPrompt, ...this.messages.slice(trimStart)];
+                } else {
+                    const placeholderUser = {
+                        role: 'user',
+                        content: 'Continuing task execution...'
+                    };
+                    this.messages = [systemPrompt, placeholderUser, ...this.messages.slice(trimStart)];
+                }
+            }
+        }
+
+        // Sanitize messages once before the retry loop
+        this.messages = sanitizeMessages(this.messages);
+
         // Total attempts = keys × models
         // Strategy: for each model, try all keys before moving to the next model
         const totalAttempts = keysCount * modelsCount;
@@ -562,57 +615,8 @@ ${userQuery}`;
                 headers['Authorization'] = `Bearer ${currentKey}`;
             }
 
-            // Character-based context window pruning (safeguard against token window overflow)
-            const MAX_RETAINED_CHARS = 240000; // ~60,000 tokens
-            const totalChars = this.messages.reduce((sum, msg) => {
-                let contentStr = '';
-                if (typeof msg.content === 'string') {
-                    contentStr = msg.content;
-                } else if (Array.isArray(msg.content)) {
-                    contentStr = JSON.stringify(msg.content);
-                }
-                return sum + contentStr.length;
-            }, 0);
+            // Context window pruning and message sanitization handled before the retry loop
 
-            if (totalChars > MAX_RETAINED_CHARS && this.messages.length > 3) {
-                const systemPrompt = this.messages[0];
-                let trimStart = 1;
-                let currentSize = totalChars - (typeof systemPrompt.content === 'string' ? systemPrompt.content.length : JSON.stringify(systemPrompt.content || '').length);
-                
-                // Find a trim point from the beginning such that the remaining suffix is below the character limit
-                // while ensuring we don't slice in the middle of a tool response group.
-                while (trimStart < this.messages.length - 2) {
-                    const msgLength = typeof this.messages[trimStart].content === 'string' 
-                        ? this.messages[trimStart].content.length 
-                        : JSON.stringify(this.messages[trimStart].content || '').length;
-                    
-                    if (currentSize - msgLength <= MAX_RETAINED_CHARS) {
-                        break;
-                    }
-                    currentSize -= msgLength;
-                    trimStart++;
-                }
-
-                // Ensure we don't slice in the middle of a tool response group
-                while (trimStart > 1 && this.messages[trimStart]?.role === 'tool') {
-                    trimStart--;
-                }
-
-                if (trimStart > 1) {
-                    if (this.messages[trimStart]?.role === 'user') {
-                        this.messages = [systemPrompt, ...this.messages.slice(trimStart)];
-                    } else {
-                        const placeholderUser = {
-                            role: 'user',
-                            content: 'Continuing task execution...'
-                        };
-                        this.messages = [systemPrompt, placeholderUser, ...this.messages.slice(trimStart)];
-                    }
-                }
-            }
-
-            // Sanitize messages to avoid API schema errors (e.g. sequence formatting and tool call IDs matching)
-            this.messages = sanitizeMessages(this.messages);
 
             const body: any = {
                 model: this.model,
@@ -657,6 +661,8 @@ ${userQuery}`;
             // Flushed to UI only after confirming they are NOT tool calls.
             let streamHoldBuffer = '';
             let streamHoldActive = false;
+            let lastRepetitionCheckLen = 0;
+            const REPETITION_CHECK_INTERVAL = 500;
 
             try {
                 // Always ensure a fresh AbortController for each LLM call
@@ -816,8 +822,11 @@ ${userQuery}`;
                                         }
                                     }
                                 }
-                                if (detectRepetitiveLoop(fullContent)) {
-                                    return true;
+                                if (fullContent.length - lastRepetitionCheckLen >= REPETITION_CHECK_INTERVAL) {
+                                    lastRepetitionCheckLen = fullContent.length;
+                                    if (detectRepetitiveLoop(fullContent)) {
+                                        return true;
+                                    }
                                 }
                             }
                             if (delta.tool_calls) {
@@ -1236,7 +1245,9 @@ function parseResilientJSON(text: string, startIdx: number = 0): { obj: any; end
     let depth = 0;
     
     function skipWhitespace() {
-        while (i < text.length && /\s/.test(text[i])) {
+        while (i < text.length) {
+            const c = text.charCodeAt(i);
+            if (c !== 32 && c !== 9 && c !== 10 && c !== 13) break;
             i++;
         }
     }
@@ -1266,7 +1277,7 @@ function parseResilientJSON(text: string, startIdx: number = 0): { obj: any; end
             } else if (char === 'n' && text.startsWith('null', i)) {
                 i += 4;
                 return null;
-            } else if (/[0-9.-]/.test(char)) {
+            } else if ((char >= '0' && char <= '9') || char === '.' || char === '-') {
                 return parseNumber();
             }
             
@@ -1406,12 +1417,17 @@ function parseResilientJSON(text: string, startIdx: number = 0): { obj: any; end
     }
     
     function parseNumber(): number {
-        let numStr = '';
-        while (i < text.length && /[0-9.eE+-]/.test(text[i])) {
-            numStr += text[i];
-            i++;
+        const start = i;
+        while (i < text.length) {
+            const c = text.charCodeAt(i);
+            // 0-9: 48-57, '.': 46, 'e': 101, 'E': 69, '+': 43, '-': 45
+            if ((c >= 48 && c <= 57) || c === 46 || c === 101 || c === 69 || c === 43 || c === 45) {
+                i++;
+            } else {
+                break;
+            }
         }
-        return Number(numStr);
+        return Number(text.substring(start, i));
     }
     
     const result = parseValue();
@@ -1420,15 +1436,14 @@ function parseResilientJSON(text: string, startIdx: number = 0): { obj: any; end
 
 function isToolUnsupportedError(errorStr: string): boolean {
     const lower = errorStr.toLowerCase();
-    return lower.includes('tools') || 
-           lower.includes('tool_choice') || 
-           lower.includes('functions') || 
-           lower.includes('unsupported parameter') ||
-           lower.includes('unrecognized parameter') ||
-           lower.includes('extra fields') ||
-           lower.includes('invalid') ||
-           lower.includes('400') ||
-           lower.includes('bad request');
+    return lower.includes('does not support tools') ||
+           lower.includes('tool_choice is not supported') ||
+           lower.includes('unrecognized parameter: tools') ||
+           lower.includes('unsupported parameter: tools') ||
+           lower.includes('unsupported parameter: tool_choice') ||
+           lower.includes('unrecognized parameter: functions') ||
+           lower.includes('extra fields not permitted') ||
+           (lower.includes('tools') && lower.includes('not supported'));
 }
 
 function extractToolCallsFromText(text: string, validToolNames?: Set<string>): any[] {
@@ -1564,26 +1579,14 @@ function cleanToolCallsFromText(text: string, validToolNames?: Set<string>): str
 function sanitizeMessages(messages: any[]): any[] {
     if (messages.length === 0) return [];
 
-    // Clone messages to avoid mutating the original history by reference
-    const cloned = messages.map(msg => {
-        const copy = { ...msg };
-        if (copy.tool_calls && Array.isArray(copy.tool_calls)) {
-            copy.tool_calls = copy.tool_calls.map((tc: any) => ({
-                ...tc,
-                function: tc.function ? { ...tc.function } : undefined
-            }));
-        }
-        return copy;
-    });
-
     const sanitized: any[] = [];
     
     // 1. Ensure the first message is system prompt
     let systemPrompt: any = null;
-    for (let i = 0; i < cloned.length; i++) {
-        if (cloned[i].role === 'system') {
+    for (let i = 0; i < messages.length; i++) {
+        if (messages[i].role === 'system') {
             if (!systemPrompt) {
-                systemPrompt = cloned[i];
+                systemPrompt = messages[i];
                 break;
             }
         }
@@ -1596,8 +1599,8 @@ function sanitizeMessages(messages: any[]): any[] {
 
     // Find the index of the first non-system message
     let firstNonSystemIdx = -1;
-    for (let i = 0; i < cloned.length; i++) {
-        if (cloned[i].role !== 'system') {
+    for (let i = 0; i < messages.length; i++) {
+        if (messages[i].role !== 'system') {
             firstNonSystemIdx = i;
             break;
         }
@@ -1610,14 +1613,26 @@ function sanitizeMessages(messages: any[]): any[] {
     // 2. We need a user message to start the conversation after the system prompt.
     // If the first non-system message is not a user message (e.g. it is assistant/tool due to pruning),
     // insert a placeholder user message first.
-    const firstMsg = cloned[firstNonSystemIdx];
+    const firstMsg = messages[firstNonSystemIdx];
     if (firstMsg.role !== 'user') {
         sanitized.push({ role: 'user', content: 'Continuing task execution...' });
     }
 
+    // Helper to clone a message safely when it needs mutation
+    const cloneMessage = (msg: any) => {
+        const copy = { ...msg };
+        if (copy.tool_calls && Array.isArray(copy.tool_calls)) {
+            copy.tool_calls = copy.tool_calls.map((tc: any) => ({
+                ...tc,
+                function: tc.function ? { ...tc.function } : undefined
+            }));
+        }
+        return copy;
+    };
+
     // 3. Process remaining messages
-    for (let i = firstNonSystemIdx; i < cloned.length; i++) {
-        const msg = cloned[i];
+    for (let i = firstNonSystemIdx; i < messages.length; i++) {
+        const msg = messages[i];
         if (msg.role === 'system') {
             continue; // Skip extra system messages
         }
@@ -1636,7 +1651,13 @@ function sanitizeMessages(messages: any[]): any[] {
             }
 
             if (lastAssistantIdx !== -1) {
-                const lastAssistant = sanitized[lastAssistantIdx];
+                let lastAssistant = sanitized[lastAssistantIdx];
+                // Clone the assistant message before mutating it if we haven't already
+                if (messages.includes(lastAssistant)) {
+                    lastAssistant = cloneMessage(lastAssistant);
+                    sanitized[lastAssistantIdx] = lastAssistant;
+                }
+
                 // Ensure the assistant has tool_calls
                 if (!Array.isArray(lastAssistant.tool_calls)) {
                     lastAssistant.tool_calls = [];

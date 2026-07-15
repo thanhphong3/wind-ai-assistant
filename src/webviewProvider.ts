@@ -646,22 +646,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'webviewReady': {
                     await this._loadAndSyncConfig();
-                    const config = vscode.workspace.getConfiguration('windAgent');
-                    const autoExecution = config.get<string>('autoExecution') || 'Ask for Approval';
-                    const autoExecutePlan = config.get<boolean>('autoExecutePlan') || false;
-                    const browser = config.get<string>('browser') || 'auto';
-                    const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') === true;
-                    const inlineCompletionModel = config.get<string>('inlineCompletionModel') || 'gemini-2.5-flash';
-                    const inlineCompletionTimeout = config.get<number>('inlineCompletionTimeout') || 30000;
-                    webviewView.webview.postMessage({
-                        type: 'settings',
-                        autoExecution,
-                        autoExecutePlan,
-                        browser,
-                        enableInlineCompletion,
-                        inlineCompletionModel,
-                        inlineCompletionTimeout
-                    });
+                    this._sendSettingsToWebview();
                     await this._sendMcpServers();
                     await this._syncModifiedFilesFromBackup();
                     await this._sendWorkspaceFiles();
@@ -669,22 +654,7 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'getSettings': {
-                    const config = vscode.workspace.getConfiguration('windAgent');
-                    const autoExecution = config.get<string>('autoExecution') || 'Ask for Approval';
-                    const autoExecutePlan = config.get<boolean>('autoExecutePlan') || false;
-                    const browser = config.get<string>('browser') || 'auto';
-                    const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') === true;
-                    const inlineCompletionModel = config.get<string>('inlineCompletionModel') || 'gemini-2.5-flash';
-                    const inlineCompletionTimeout = config.get<number>('inlineCompletionTimeout') || 30000;
-                    webviewView.webview.postMessage({
-                        type: 'settings',
-                        autoExecution,
-                        autoExecutePlan,
-                        browser,
-                        enableInlineCompletion,
-                        inlineCompletionModel,
-                        inlineCompletionTimeout
-                    });
+                    this._sendSettingsToWebview();
                     await this._sendMcpServers();
                     break;
                 }
@@ -3878,6 +3848,27 @@ IMPORTANT rules:
             }
         }
         throw lastError || new Error('All API Keys failed for self-healing fix.');
+    }
+
+    private _sendSettingsToWebview() {
+        if (!this._view) return;
+        const config = vscode.workspace.getConfiguration('windAgent');
+        const autoExecution = config.get<string>('autoExecution') || 'Ask for Approval';
+        const autoExecutePlan = config.get<boolean>('autoExecutePlan') || false;
+        const browser = config.get<string>('browser') || 'auto';
+        const enableInlineCompletion = config.get<boolean>('enableInlineCompletion') === true;
+        const inlineCompletionModel = config.get<string>('inlineCompletionModel') || 'gemini-2.5-flash';
+        const inlineCompletionTimeout = config.get<number>('inlineCompletionTimeout') || 30000;
+        
+        this._view.webview.postMessage({
+            type: 'settings',
+            autoExecution,
+            autoExecutePlan,
+            browser,
+            enableInlineCompletion,
+            inlineCompletionModel,
+            inlineCompletionTimeout
+        });
     }
 
     private async _sendMcpServers() {

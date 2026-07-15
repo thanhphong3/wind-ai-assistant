@@ -870,8 +870,12 @@ export class ToolsManager {
         const resolved = path.resolve(this.workspaceRoot, cleanRelative);
         const normalizedRoot = path.resolve(this.workspaceRoot);
         
-        // Use lowercase paths for relative check to avoid case-mismatch issues (e.g. drive letters on Windows)
-        const relative = path.relative(normalizedRoot.toLowerCase(), resolved.toLowerCase());
+        // On Windows, use case-insensitive comparison. On Linux/macOS, use exact paths.
+        const isWindows = process.platform === 'win32';
+        const relative = isWindows
+            ? path.relative(normalizedRoot.toLowerCase(), resolved.toLowerCase())
+            : path.relative(normalizedRoot, resolved);
+
         
         // Security check: Ensure path does not escape workspace root
         if (relative.startsWith('..') || path.isAbsolute(relative)) {
@@ -1108,25 +1112,24 @@ export class ToolsManager {
 
             const files = await fs.readdir(kiDir);
             const matches: string[] = [];
+            const validFiles = files.filter(f => f.endsWith('.md') || f.endsWith('.json') || f.endsWith('.txt'));
 
-            for (const file of files) {
-                if (file.endsWith('.md') || file.endsWith('.json') || file.endsWith('.txt')) {
-                    const filePath = path.join(kiDir, file);
-                    const content = await fs.readFile(filePath, 'utf8');
-                    if (content.toLowerCase().includes(query.toLowerCase()) || file.toLowerCase().includes(query.toLowerCase())) {
-                        // Find matching lines
-                        const lines = content.split('\n');
-                        const snippets: string[] = [];
-                        for (let i = 0; i < lines.length; i++) {
-                            if (lines[i].toLowerCase().includes(query.toLowerCase())) {
-                                snippets.push(`Line ${i + 1}: ${lines[i].trim()}`);
-                                if (snippets.length >= 3) break; // limit snippets per file
-                            }
+            await Promise.all(validFiles.map(async (file) => {
+                const filePath = path.join(kiDir, file);
+                const content = await fs.readFile(filePath, 'utf8');
+                if (content.toLowerCase().includes(query.toLowerCase()) || file.toLowerCase().includes(query.toLowerCase())) {
+                    // Find matching lines
+                    const lines = content.split('\n');
+                    const snippets: string[] = [];
+                    for (let i = 0; i < lines.length; i++) {
+                        if (lines[i].toLowerCase().includes(query.toLowerCase())) {
+                            snippets.push(`Line ${i + 1}: ${lines[i].trim()}`);
+                            if (snippets.length >= 3) break; // limit snippets per file
                         }
-                        matches.push(`--- Matching File: ${file} ---\n` + (snippets.length > 0 ? snippets.join('\n') : '(Matched in filename)'));
                     }
+                    matches.push(`--- Matching File: ${file} ---\n` + (snippets.length > 0 ? snippets.join('\n') : '(Matched in filename)'));
                 }
-            }
+            }));
 
             if (matches.length === 0) {
                 return `No knowledge items matched the query "${query}".`;
@@ -1432,6 +1435,10 @@ export class ToolsManager {
     private async runCommand(command: string, runInBackground?: boolean, signal?: AbortSignal): Promise<string> {
         if (signal?.aborted) {
             throw new Error('Cancelled by user');
+        }
+        const lowerCmd = command.toLowerCase();
+        if (lowerCmd.includes('rm -rf /') || lowerCmd.includes('format c:') || lowerCmd.includes('del /s /q')) {
+            console.warn(`[WARNING] Destructive command detected and allowed: ${command}`);
         }
         if (runInBackground) {
             // Guard: limit concurrent background commands to prevent resource exhaustion
@@ -2014,35 +2021,26 @@ export class ToolsManager {
                 return `Error opening browser: Could not find executable for preferred browser "${preferredBrowser}". Please make sure it is installed or change the setting to "auto".`;
             }
 
-            if (!ToolsManager.browser) {
-                const launchOptions: any = {
+            const getLaunchOptions = () => {
+                const opts: any = {
                     headless: isHeadless,
                     defaultViewport: null,
                     args: ['--start-maximized', '--no-sandbox', '--disable-setuid-sandbox'],
                     ignoreDefaultArgs: ['--enable-automation']
                 };
-                if (executablePath) {
-                    launchOptions.executablePath = executablePath;
-                }
+                if (executablePath) opts.executablePath = executablePath;
+                return opts;
+            };
 
-                ToolsManager.browser = await puppeteer.launch(launchOptions);
+            if (!ToolsManager.browser) {
+                ToolsManager.browser = await puppeteer.launch(getLaunchOptions());
                 const pages = await ToolsManager.browser.pages();
                 ToolsManager.page = pages.length > 0 ? pages[0] : await ToolsManager.browser.newPage();
             } else {
                 try {
                     await ToolsManager.browser.version();
                 } catch {
-                    const launchOptions: any = {
-                        headless: isHeadless,
-                        defaultViewport: null,
-                        args: ['--start-maximized', '--no-sandbox', '--disable-setuid-sandbox'],
-                        ignoreDefaultArgs: ['--enable-automation']
-                    };
-                    if (executablePath) {
-                        launchOptions.executablePath = executablePath;
-                    }
-
-                    ToolsManager.browser = await puppeteer.launch(launchOptions);
+                    ToolsManager.browser = await puppeteer.launch(getLaunchOptions());
                     const pages = await ToolsManager.browser.pages();
                     ToolsManager.page = pages.length > 0 ? pages[0] : await ToolsManager.browser.newPage();
                 }
@@ -2372,6 +2370,7 @@ export class ToolsManager {
                                 const lineText = lines[i];
                                 const isMatched = regex ? regex.test(lineText) : lineText.includes(query);
                                 if (isMatched) {
+                                    if (matches.length >= MAX_MATCHES) break;
                                     matches.push({
                                         file: fullPath,
                                         line: i + 1,

@@ -155,13 +155,21 @@ export class McpClient {
                 return reject(new Error(`MCP server ${this.name} is not connected`));
             }
             const id = this.nextId++;
+            const timeout = setTimeout(() => {
+                this.pendingRequests.delete(id);
+                reject(new Error(`MCP request ${method} (id=${id}) to ${this.name} timed out after 30s`));
+            }, 30000);
             const message = {
                 jsonrpc: '2.0',
                 id,
                 method,
                 params
             };
-            this.pendingRequests.set(id, { resolve, reject, method });
+            this.pendingRequests.set(id, {
+                resolve: (res: any) => { clearTimeout(timeout); resolve(res); },
+                reject: (err: any) => { clearTimeout(timeout); reject(err); },
+                method
+            });
             this.process.stdin.write(JSON.stringify(message) + '\n');
         });
     }
@@ -231,6 +239,7 @@ export class McpManager {
         
         this.initPromise = (async () => {
             const configs = await this.loadConfigs();
+            let anyConnected = false;
             for (const [name, config] of Object.entries(configs)) {
                 if (config.disabled === true) {
                     console.log(`[MCP Manager] Server ${name} is disabled. Skipping connection.`);
@@ -246,9 +255,14 @@ export class McpManager {
                         this.toolToClientMap.set(tool.name, name);
                     }
                     console.log(`[MCP Manager] Connected to server: ${name}. Registered ${client.tools.length} tools.`);
+                    anyConnected = true;
                 } catch (e: any) {
                     console.error(`[MCP Manager] Failed to connect to server "${name}":`, e.message);
                 }
+            }
+            // If no servers connected and there were configs to try, allow retry on next call
+            if (!anyConnected && Object.keys(configs).length > 0) {
+                this.initPromise = null;
             }
         })();
 

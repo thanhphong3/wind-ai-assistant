@@ -434,9 +434,13 @@ export class DiffManager implements vscode.CodeLensProvider {
             edit.replace(doc.uri, fullRange, mergedText);
 
             this._isApplyingInternalEdit = true;
-            const success = await vscode.workspace.applyEdit(edit);
-            await doc.save();
-            this._isApplyingInternalEdit = false;
+            let success = false;
+            try {
+                success = await vscode.workspace.applyEdit(edit);
+                await doc.save();
+            } finally {
+                this._isApplyingInternalEdit = false;
+            }
 
             if (success) {
                 this._initializedDiffFiles.add(relativePath);
@@ -447,7 +451,6 @@ export class DiffManager implements vscode.CodeLensProvider {
             }
         } catch (e) {
             console.error('Failed to initialize inline diff:', e);
-            this._isApplyingInternalEdit = false;
         }
     }
 
@@ -624,9 +627,12 @@ export class DiffManager implements vscode.CodeLensProvider {
             edit.replace(document.uri, fullRange, mergedText);
 
             this._isApplyingInternalEdit = true;
-            await vscode.workspace.applyEdit(edit);
-            await document.save();
-            this._isApplyingInternalEdit = false;
+            try {
+                await vscode.workspace.applyEdit(edit);
+                await document.save();
+            } finally {
+                this._isApplyingInternalEdit = false;
+            }
 
             this._fileHunksCache.set(relativePath, newHunks);
 
@@ -644,7 +650,6 @@ export class DiffManager implements vscode.CodeLensProvider {
             this._onDidChangeCodeLenses.fire();
         } catch (e) {
             console.error('Failed to recalculate inline diff:', e);
-            this._isApplyingInternalEdit = false;
         }
     }
 
@@ -666,17 +671,19 @@ export class DiffManager implements vscode.CodeLensProvider {
             edit.replace(doc.uri, fullRange, cleanText);
 
             this._isApplyingInternalEdit = true;
-            const applied = await vscode.workspace.applyEdit(edit);
-            if (applied) {
-                await doc.save();
+            try {
+                const applied = await vscode.workspace.applyEdit(edit);
+                if (applied) {
+                    await doc.save();
+                }
+            } finally {
+                this._isApplyingInternalEdit = false;
             }
-            this._isApplyingInternalEdit = false;
 
             this._initializedDiffFiles.delete(relativePath);
             this._fileHunksCache.delete(relativePath);
         } catch (e) {
             console.error('Failed to clean document before edit:', e);
-            this._isApplyingInternalEdit = false;
         }
     }
 
@@ -813,9 +820,12 @@ export class DiffManager implements vscode.CodeLensProvider {
             edit.replace(doc.uri, fullRange, originalContent);
 
             this._isApplyingInternalEdit = true;
-            await vscode.workspace.applyEdit(edit);
-            await doc.save();
-            this._isApplyingInternalEdit = false;
+            try {
+                await vscode.workspace.applyEdit(edit);
+                await doc.save();
+            } finally {
+                this._isApplyingInternalEdit = false;
+            }
         }
 
         this._initializedDiffFiles.delete(relativePath);
@@ -858,8 +868,12 @@ export class DiffManager implements vscode.CodeLensProvider {
             edit.replace(doc.uri, fullRange, mergedText);
 
             this._isApplyingInternalEdit = true;
-            const success = await vscode.workspace.applyEdit(edit);
-            this._isApplyingInternalEdit = false;
+            let success = false;
+            try {
+                success = await vscode.workspace.applyEdit(edit);
+            } finally {
+                this._isApplyingInternalEdit = false;
+            }
 
             if (success) {
                 this._initializedDiffFiles.add(relativePath);
@@ -869,7 +883,6 @@ export class DiffManager implements vscode.CodeLensProvider {
             }
         } catch (e) {
             console.error('Failed to update streaming diff:', e);
-            this._isApplyingInternalEdit = false;
         }
     }
 }
