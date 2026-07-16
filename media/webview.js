@@ -2691,20 +2691,40 @@
         });
 
         // Extract and format tables
-        html = html.replace(/(?:^|\n)([ \t]*\|[^\n]+\|[ \t]*\r?\n[ \t]*\|[ \t]*:?---[-| :]*\|[ \t]*\r?\n(?:[ \t]*\|[^\n]+\|[ \t]*(?:\r?\n|$))*)/g, (match, tableContent) => {
-            const lines = tableContent.trim().split('\n').map(l => l.trim());
-            if (lines.length < 2) return match;
+        function isDelimiterRow(line) {
+            const trimmed = line.trim();
+            if (!trimmed) return false;
+            const hasDash = trimmed.includes('-');
+            const validChars = /^[|\s:-]+$/.test(trimmed);
+            const hasPipe = trimmed.includes('|');
+            return hasDash && validChars && hasPipe;
+        }
 
-            const headerRow = lines[0];
-            const separatorRow = lines[1];
-            const dataRows = lines.slice(2);
+        function isHeaderRow(line) {
+            return line.includes('|');
+        }
 
-            // Parse headers
-            const headers = headerRow.split('|').map(h => h.trim()).filter((h, idx, arr) => idx > 0 && idx < arr.length - 1);
-            
-            // Check if separator is valid
-            const isSeparator = /^[|\s:-]+$/.test(separatorRow);
-            if (!isSeparator) return match;
+        function isTableDataRow(line) {
+            return line.includes('|');
+        }
+
+        function splitRow(line) {
+            let trimmed = line.trim();
+            if (trimmed.startsWith('|')) {
+                trimmed = trimmed.substring(1);
+            }
+            if (trimmed.endsWith('|')) {
+                trimmed = trimmed.substring(0, trimmed.length - 1);
+            }
+            return trimmed.split('|').map(cell => cell.trim());
+        }
+
+        function renderTable(tableLines) {
+            const headerRow = tableLines[0];
+            const dataRows = tableLines.slice(2);
+
+            const headers = splitRow(headerRow);
+            const numCols = headers.length;
 
             let tableHtml = '<table>';
             tableHtml += '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
@@ -2712,16 +2732,59 @@
 
             dataRows.forEach(row => {
                 if (!row.trim()) return;
-                const cols = row.split('|').map(c => c.trim()).filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
-                tableHtml += '<tr>' + cols.map(c => `<td>${c}</td>`).join('') + '</tr>';
+                const cols = splitRow(row);
+                if (cols.length === 1 && cols[0] === '') return;
+                
+                const displayCols = [];
+                for (let c = 0; c < numCols; c++) {
+                    displayCols.push(cols[c] !== undefined ? cols[c] : '');
+                }
+                tableHtml += '<tr>' + displayCols.map(c => `<td>${c}</td>`).join('') + '</tr>';
             });
 
             tableHtml += '</tbody></table>';
+            return tableHtml;
+        }
 
-            const placeholder = `___WIND_CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}___`;
-            codeBlocks.push(tableHtml);
-            return '\n' + placeholder + '\n';
-        });
+        function parseMarkdownTables(htmlStr) {
+            const tableLinesList = htmlStr.split(/\r?\n/);
+            const newLines = [];
+            let i = 0;
+
+            while (i < tableLinesList.length) {
+                const line = tableLinesList[i];
+                const nextLine = tableLinesList[i + 1];
+
+                if (nextLine !== undefined && isDelimiterRow(nextLine) && isHeaderRow(line)) {
+                    const tableLines = [];
+                    tableLines.push(line);
+                    tableLines.push(nextLine);
+                    i += 2;
+
+                    while (i < tableLinesList.length) {
+                        const rowLine = tableLinesList[i];
+                        if (isTableDataRow(rowLine)) {
+                            tableLines.push(rowLine);
+                            i++;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    const tableHtml = renderTable(tableLines);
+                    const placeholder = `___WIND_CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}___`;
+                    codeBlocks.push(tableHtml);
+                    newLines.push(placeholder);
+                } else {
+                    newLines.push(line);
+                    i++;
+                }
+            }
+
+            return newLines.join('\n');
+        }
+
+        html = parseMarkdownTables(html);
 
         // Strip thinking/thought tags from response
         html = html.replace(/^<thought>\s*/i, '');
