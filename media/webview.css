@@ -3788,3 +3788,70 @@ textarea::placeholder {
     background: var(--vscode-button-background, #007acc);
     color: var(--vscode-button-foreground, #ffffff);
 }
+
+/* Code block container & Actions */
+.code-block-container {
+    position: relative;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin: 12px 0;
+    background: #18191a;
+    overflow: hidden;
+}
+
+.code-block-container pre {
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+}
+
+.code-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #202124;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 11px;
+    font-family: inherit;
+    color: var(--text-secondary);
+}
+
+.code-block-lang {
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.code-block-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.code-block-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 10px;
+    transition: all 0.2s ease;
+}
+
+.code-block-btn:hover {
+    background: var(--bg-secondary);
+    border-color: var(--text-secondary);
+}
+
+.html-preview-wrapper {
+    width: 100%;
+    height: 400px;
+    background: white;
+}
+
+.html-preview-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}

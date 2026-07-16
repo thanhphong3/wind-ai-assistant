@@ -14,6 +14,71 @@
         }
     };
 
+    window.toggleHtmlPreview = function(button) {
+        const container = button.closest('.code-block-container');
+        const pre = container.querySelector('pre');
+        const previewWrapper = container.querySelector('.html-preview-wrapper');
+        const isShowingPreview = !previewWrapper.classList.contains('hidden');
+        
+        if (isShowingPreview) {
+            previewWrapper.classList.add('hidden');
+            previewWrapper.innerHTML = '';
+            pre.classList.remove('hidden');
+            button.textContent = 'Preview';
+        } else {
+            pre.classList.add('hidden');
+            previewWrapper.classList.remove('hidden');
+            button.textContent = 'Code';
+            
+            const codeElement = pre.querySelector('code');
+            const escapedCode = codeElement.innerHTML;
+            const unescapedCode = escapedCode
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#039;/g, "'");
+                
+            const iframe = document.createElement('iframe');
+            iframe.className = 'html-preview-iframe';
+            iframe.sandbox = 'allow-scripts';
+            
+            previewWrapper.appendChild(iframe);
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            iframeDoc.open();
+            iframeDoc.write(unescapedCode);
+            iframeDoc.close();
+        }
+    };
+
+    window.copyCodeBlock = function(button) {
+        const container = button.closest('.code-block-container');
+        const pre = container.querySelector('pre');
+        if (!pre) return;
+        const codeElement = pre.querySelector('code');
+        if (!codeElement) return;
+        
+        const escapedCode = codeElement.innerHTML;
+        const unescapedCode = escapedCode
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#039;/g, "'");
+            
+        navigator.clipboard.writeText(unescapedCode).then(() => {
+            const originalText = button.textContent;
+            button.textContent = 'Copied!';
+            button.style.borderColor = 'var(--accent-blue)';
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.style.borderColor = '';
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy text:', err);
+        });
+    };
+
     const chatContainer = document.getElementById('chat-container');
     let userAtBottom = true;
     
@@ -2563,7 +2628,7 @@
                     if (codeMatch) {
                         const lang = codeMatch[1];
                         const code = codeMatch[2];
-                        slideHtml = `<div class="carousel-slide-content code-slide"><pre><code class="language-${lang}">${code.trim()}</code></pre></div>`;
+                        slideHtml = `<div class="carousel-slide-content code-slide"><pre><code class="language-${lang}">${escapeHtml(code.trim())}</code></pre></div>`;
                     } else {
                         slideHtml = `<div class="carousel-slide-content text-slide"><p>${slideHtml.replace(/\n/g, '<br/>')}</p></div>`;
                     }
@@ -2590,7 +2655,38 @@
         // Extract and temporarily store code blocks to prevent them from being formatted or escaped
         html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
             const placeholder = `___WIND_CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}___`;
-            codeBlocks.push(`<pre><code class="language-${lang}">${code.trim()}</code></pre>`);
+            const cleanLang = lang ? lang.toLowerCase() : '';
+            const escapedCode = escapeHtml(code.trim());
+            
+            if (cleanLang === 'html') {
+                codeBlocks.push(`
+<div class="code-block-container html-block">
+    <div class="code-block-header">
+        <span class="code-block-lang">html</span>
+        <div class="code-block-actions">
+            <button class="code-block-btn preview-toggle-btn" onclick="toggleHtmlPreview(this)">Preview</button>
+            <button class="code-block-btn copy-btn" onclick="copyCodeBlock(this)">Copy</button>
+        </div>
+    </div>
+    <div class="code-block-wrapper">
+        <pre><code class="language-html">${escapedCode}</code></pre>
+        <div class="html-preview-wrapper hidden"></div>
+    </div>
+</div>
+                `);
+            } else {
+                codeBlocks.push(`
+<div class="code-block-container">
+    <div class="code-block-header">
+        <span class="code-block-lang">${cleanLang || 'code'}</span>
+        <div class="code-block-actions">
+            <button class="code-block-btn copy-btn" onclick="copyCodeBlock(this)">Copy</button>
+        </div>
+    </div>
+    <pre><code class="language-${cleanLang}">${escapedCode}</code></pre>
+</div>
+                `);
+            }
             return placeholder;
         });
 

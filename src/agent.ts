@@ -233,6 +233,11 @@ ${userQuery}`;
         const maxLoops = mode === 'goal' ? 100 : 50; // Safeguard against infinite tool loops
         const toolCallHistory: string[] = [];
 
+        let accumulatedContent = '';
+        let accumulatedToolCalls: any[] = [];
+        let isContinuation = false;
+        let assistantStartIndex = -1;
+
         const modelLower = this.model.toLowerCase();
         const isNonToolModel = modelLower.includes('deepseek') || modelLower.includes('gemma') || modelLower.includes('r1');
         let forceNonTool = isNonToolModel;
@@ -242,6 +247,12 @@ ${userQuery}`;
                 throw new Error('Cancelled by user');
             }
             loopCount++;
+
+            if (!isContinuation) {
+                assistantStartIndex = this.messages.length;
+                accumulatedContent = '';
+                accumulatedToolCalls = [];
+            }
 
             let allowedTools = this.toolsManager ? this.toolsManager.getAvailableTools() : TOOLS;
             if (mode === 'chat') {
@@ -332,6 +343,53 @@ ${userQuery}`;
                     }
                 }
             }
+
+            if (assistantMessage.content) {
+                accumulatedContent += assistantMessage.content;
+            }
+            if (assistantMessage.tool_calls) {
+                accumulatedToolCalls.push(...assistantMessage.tool_calls);
+            }
+
+            if (assistantMessage.wasAbortedByRepetition) {
+                this.callbacks.onLog('⚠️ System: Stream repetition loop detected. Automatically recovering and resuming generation...');
+                
+                // Temporarily push assistantMessage to messages so the LLM has it in context
+                this.messages.push(assistantMessage);
+                
+                const lastSnippet = assistantMessage.content ? assistantMessage.content.slice(-60) : '';
+                const promptSuffix = lastSnippet ? ` from the last part of your response: "${lastSnippet}"` : '';
+                
+                this.messages.push({
+                    role: 'user',
+                    content: `[System Warning: Your previous response got stuck in a repetitive loop. Please continue your response${promptSuffix} without repeating yourself. Be concise and focus on the task. Do NOT repeat code or explanations you have already provided.]`
+                });
+                
+                isContinuation = true;
+                loopCount--; // don't count this recovery attempt as a loop
+                continue;
+            }
+
+            if (isContinuation) {
+                // Rollback the temporary recovery messages from history
+                this.messages = this.messages.slice(0, assistantStartIndex);
+                
+                // Construct clean consolidated message
+                const finalAssistantMessage: any = {
+                    role: 'assistant',
+                    content: accumulatedContent
+                };
+                if (accumulatedToolCalls.length > 0) {
+                    finalAssistantMessage.tool_calls = accumulatedToolCalls;
+                }
+                if (assistantMessage.reasoning_content) {
+                    finalAssistantMessage.reasoning_content = assistantMessage.reasoning_content;
+                }
+                
+                // Update assistantMessage reference so the rest of the agent flow uses the consolidated version
+                assistantMessage = finalAssistantMessage;
+                isContinuation = false;
+            }
             
             // Store assistant's response in history
             this.messages.push(assistantMessage);
@@ -349,7 +407,10 @@ ${userQuery}`;
                 this.callbacks.onLog(`[Reasoning] ${assistantMessage.reasoning_content}`);
             }
             if (assistantMessage.content) {
-                this.callbacks.onLog(`[Thought] ${assistantMessage.content}`);
+                const cleanContent = assistantMessage.content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+                if (cleanContent || !assistantMessage.reasoning_content) {
+                    this.callbacks.onLog(`[Thought] ${assistantMessage.content}`);
+                }
             }
 
             // Execute each tool requested by the model
@@ -654,6 +715,8 @@ ${userQuery}`;
 
             let fullContent = '';
             let fullReasoningContent = '';
+            let hasNativeReasoning = false;
+            let emittedCleanContentLength = 0;
             let msgThoughtSignature: any = undefined;
             const activeToolCalls: any = {}; // map of index -> tool_call object
 
@@ -662,7 +725,7 @@ ${userQuery}`;
             let streamHoldBuffer = '';
             let streamHoldActive = false;
             let lastRepetitionCheckLen = 0;
-            const REPETITION_CHECK_INTERVAL = 500;
+            const REPETITION_CHECK_INTERVAL = 50;
 
             try {
                 // Always ensure a fresh AbortController for each LLM call
@@ -707,16 +770,19 @@ ${userQuery}`;
                             }
 
                             if (delta.reasoning_content) {
+                                hasNativeReasoning = true;
                                 fullReasoningContent += delta.reasoning_content;
                                 if (this.callbacks.onStreamThought) {
                                     this.callbacks.onStreamThought(delta.reasoning_content);
                                 }
                             } else if (delta.thinking) {
+                                hasNativeReasoning = true;
                                 fullReasoningContent += delta.thinking;
                                 if (this.callbacks.onStreamThought) {
                                     this.callbacks.onStreamThought(delta.thinking);
                                 }
                             } else if (delta.reasoning) {
+                                hasNativeReasoning = true;
                                 fullReasoningContent += delta.reasoning;
                                 if (this.callbacks.onStreamThought) {
                                     this.callbacks.onStreamThought(delta.reasoning);
@@ -724,10 +790,27 @@ ${userQuery}`;
                             }
                             if (delta.content) {
                                 fullContent += delta.content;
-                                if (this.callbacks.onStreamChunk) {
+                                
+                                let chunkToEmit = delta.content;
+                                if (hasNativeReasoning) {
+                                    const cleanContent = fullContent.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '');
+                                    const match = cleanContent.match(/<t?h?i?n?k?>?$/i);
+                                    let safeCleanContent = cleanContent;
+                                    if (match) {
+                                        safeCleanContent = cleanContent.slice(0, match.index);
+                                    }
+                                    chunkToEmit = safeCleanContent.slice(emittedCleanContentLength);
+                                    if (chunkToEmit) {
+                                        emittedCleanContentLength += chunkToEmit.length;
+                                    }
+                                } else {
+                                    emittedCleanContentLength = fullContent.length;
+                                }
+
+                                if (chunkToEmit && this.callbacks.onStreamChunk) {
                                     // Smart buffering: if we see '{', start buffering to prevent
                                     // tool call JSON from being rendered directly in the chat UI.
-                                    if (!streamHoldActive && delta.content.includes('{')) {
+                                    if (!streamHoldActive && chunkToEmit.includes('{')) {
                                         // Check if we are inside a markdown code block.
                                         // If we are, this is code text, not a tool call.
                                         const matches = fullContent.match(/```/g);
@@ -737,7 +820,7 @@ ${userQuery}`;
                                         }
                                     }
                                     if (streamHoldActive) {
-                                        streamHoldBuffer += delta.content;
+                                        streamHoldBuffer += chunkToEmit;
                                         
                                         // Check if we should flush early (e.g. if buffer contains a markdown code block,
                                         // is too long without tool call keywords, or has successfully parsed as a non-tool JSON).
@@ -971,13 +1054,17 @@ ${userQuery}`;
                                     let cleanContent = fullContent;
                                     const len = fullContent.length;
                                     const maxL = Math.floor(len / 3);
-                                    for (let L = 15; L <= maxL; L++) {
+                                    for (let L = 4; L <= maxL; L++) {
                                         const chunk1 = fullContent.substring(len - L);
                                         const chunk2 = fullContent.substring(len - 2 * L, len - L);
                                         const chunk3 = fullContent.substring(len - 3 * L, len - 2 * L);
                                         if (chunk1 === chunk2 && chunk2 === chunk3) {
-                                            cleanContent = fullContent.substring(0, len - 2 * L);
-                                            break;
+                                            const hasLetter = /\p{L}/u.test(chunk1);
+                                            const uniqueChars = new Set(chunk1).size;
+                                            if (hasLetter && uniqueChars >= 2) {
+                                                cleanContent = fullContent.substring(0, len - 2 * L);
+                                                break;
+                                            }
                                         }
                                     }
                                     
@@ -1754,14 +1841,24 @@ function sanitizeMessages(messages: any[]): any[] {
 
 function detectRepetitiveLoop(text: string): boolean {
     const len = text.length;
-    if (len < 45) return false;
-    const maxL = Math.floor(len / 3);
-    for (let L = 15; L <= maxL; L++) {
-        const chunk1 = text.substring(len - L);
-        const chunk2 = text.substring(len - 2 * L, len - L);
-        const chunk3 = text.substring(len - 3 * L, len - 2 * L);
+    if (len < 15) return false;
+    
+    // We only need to check the last 300 characters for repetition
+    const checkWindow = Math.min(len, 300);
+    const suffix = text.substring(len - checkWindow);
+    const suffixLen = suffix.length;
+    const maxL = Math.floor(suffixLen / 3);
+    
+    for (let L = 4; L <= maxL; L++) {
+        const chunk1 = suffix.substring(suffixLen - L);
+        const chunk2 = suffix.substring(suffixLen - 2 * L, suffixLen - L);
+        const chunk3 = suffix.substring(suffixLen - 3 * L, suffixLen - 2 * L);
         if (chunk1 === chunk2 && chunk2 === chunk3) {
-            return true;
+            const hasLetter = /\p{L}/u.test(chunk1);
+            const uniqueChars = new Set(chunk1).size;
+            if (hasLetter && uniqueChars >= 2) {
+                return true;
+            }
         }
     }
     return false;
