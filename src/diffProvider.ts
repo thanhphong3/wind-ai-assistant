@@ -202,24 +202,6 @@ export function getInlineDiffHunks(mergedLines: InlineDiffLine[], _changes: Diff
     return hunks;
 }
 
-function getActionButtonSvg(): string {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="225" height="24" viewBox="0 0 225 24" fill="none">
-        <rect x="0.5" y="0.5" width="224" height="23" rx="4" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-        <!-- Accept button -->
-        <rect x="6" y="3" width="90" height="18" rx="3" fill="#0969da"/>
-        <text x="12" y="15" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10" font-weight="bold" fill="#ffffff">Accept</text>
-        <rect x="52" y="5" width="38" height="14" rx="2" fill="rgba(255,255,255,0.2)"/>
-        <text x="56" y="15" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="9" fill="#ffffff">Alt+↵</text>
-
-        <!-- Reject button -->
-        <rect x="102" y="3" width="117" height="18" rx="3" fill="#21262d" stroke="#30363d" stroke-width="1"/>
-        <text x="108" y="15" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10" font-weight="bold" fill="#c9d1d9">Reject</text>
-        <rect x="146" y="5" width="67" height="14" rx="2" fill="rgba(255,255,255,0.1)"/>
-        <text x="150" y="15" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="9" fill="#c9d1d9">Shift+Alt+⌫</text>
-    </svg>`;
-    return 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');
-}
-
 export class DiffManager implements vscode.CodeLensProvider {
     private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
     public readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
@@ -230,42 +212,16 @@ export class DiffManager implements vscode.CodeLensProvider {
 
     private _addedLineDecorationType: vscode.TextEditorDecorationType;
     private _deletedLineDecorationType: vscode.TextEditorDecorationType;
-    private _actionButtonDecorationType: vscode.TextEditorDecorationType;
 
     constructor(private provider: WindWebviewProvider) {
         this._addedLineDecorationType = vscode.window.createTextEditorDecorationType({
             isWholeLine: true,
-            backgroundColor: 'rgba(74, 222, 128, 0.15)',
-            overviewRulerColor: 'rgba(74, 222, 128, 0.8)',
-            overviewRulerLane: vscode.OverviewRulerLane.Left,
-            before: {
-                contentText: '+',
-                color: 'rgba(74, 222, 128, 0.8)',
-                margin: '0 0.8em 0 0.4em',
-                fontWeight: 'bold'
-            }
+            backgroundColor: new vscode.ThemeColor("diffEditor.insertedTextBackground")
         });
 
         this._deletedLineDecorationType = vscode.window.createTextEditorDecorationType({
             isWholeLine: true,
-            backgroundColor: 'rgba(239, 68, 68, 0.15)',
-            overviewRulerColor: 'rgba(239, 68, 68, 0.8)',
-            overviewRulerLane: vscode.OverviewRulerLane.Left,
-            before: {
-                contentText: '-',
-                color: 'rgba(239, 68, 68, 0.8)',
-                margin: '0 0.8em 0 0.4em',
-                fontWeight: 'bold'
-            }
-        });
-
-        this._actionButtonDecorationType = vscode.window.createTextEditorDecorationType({
-            after: {
-                contentIconPath: vscode.Uri.parse(getActionButtonSvg()),
-                margin: '0 0 0 24px',
-                width: '225px',
-                height: '24px'
-            }
+            backgroundColor: new vscode.ThemeColor("diffEditor.removedTextBackground")
         });
     }
 
@@ -466,44 +422,33 @@ export class DiffManager implements vscode.CodeLensProvider {
         if (!this._initializedDiffFiles.has(relativePath) || !this.isFileModified(relativePath)) {
             editor.setDecorations(this._addedLineDecorationType, []);
             editor.setDecorations(this._deletedLineDecorationType, []);
-            editor.setDecorations(this._actionButtonDecorationType, []);
             return;
         }
 
         const hunks = this._fileHunksCache.get(relativePath) || [];
         const addedDecorations: vscode.DecorationOptions[] = [];
         const deletedDecorations: vscode.DecorationOptions[] = [];
-        const actionDecorations: vscode.DecorationOptions[] = [];
 
         for (const hunk of hunks) {
             if (hunk.removedCount > 0) {
-                const range = new vscode.Range(
-                    hunk.startLine, 0,
-                    hunk.startLine + hunk.removedCount - 1, Number.MAX_SAFE_INTEGER
-                );
-                deletedDecorations.push({ range });
+                for (let i = 0; i < hunk.removedCount; i++) {
+                    const line = hunk.startLine + i;
+                    const range = new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER);
+                    deletedDecorations.push({ range });
+                }
             }
 
             if (hunk.addedCount > 0) {
-                const range = new vscode.Range(
-                    hunk.startLine + hunk.removedCount, 0,
-                    hunk.endLine - 1, Number.MAX_SAFE_INTEGER
-                );
-                addedDecorations.push({ range });
-            }
-
-            // Place action buttons decoration at the end of the hunk's start line
-            const startLineIdx = hunk.startLine;
-            if (startLineIdx < document.lineCount) {
-                const line = document.lineAt(startLineIdx);
-                const range = new vscode.Range(startLineIdx, line.text.length, startLineIdx, line.text.length);
-                actionDecorations.push({ range });
+                for (let i = 0; i < hunk.addedCount; i++) {
+                    const line = hunk.startLine + hunk.removedCount + i;
+                    const range = new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER);
+                    addedDecorations.push({ range });
+                }
             }
         }
 
         editor.setDecorations(this._addedLineDecorationType, addedDecorations);
         editor.setDecorations(this._deletedLineDecorationType, deletedDecorations);
-        editor.setDecorations(this._actionButtonDecorationType, actionDecorations);
     }
 
     provideCodeLenses(document: vscode.TextDocument, _token: vscode.CancellationToken): vscode.CodeLens[] {
@@ -539,12 +484,12 @@ export class DiffManager implements vscode.CodeLensProvider {
         for (const hunk of hunks) {
             const range = new vscode.Range(hunk.startLine, 0, hunk.startLine, 0);
             lenses.push(new vscode.CodeLens(range, {
-                title: `✓ Accept`,
+                title: `✓ Accept (Alt+Enter)`,
                 command: 'wind-agent.acceptDiffHunk',
                 arguments: [relativePath, hunk.id]
             }));
             lenses.push(new vscode.CodeLens(range, {
-                title: `✕ Revert`,
+                title: `✕ Revert (Shift+Alt+Backspace)`,
                 command: 'wind-agent.discardDiffHunk',
                 arguments: [relativePath, hunk.id]
             }));

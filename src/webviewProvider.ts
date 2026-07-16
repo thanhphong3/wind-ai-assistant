@@ -3216,11 +3216,13 @@ Keep it structured, clear, and professional. Do NOT run any tools or include any
                             await state.queue.wait();
                             if (success) {
                                 const doc = await vscode.workspace.openTextDocument(state.absolutePath);
-                                await doc.save();
+                                if (!this._diffManager) {
+                                    await doc.save();
+                                }
                                 this._sessionAcceptedFiles.delete(state.relativePath);
                                 this._sessionModifiedFiles.add(state.relativePath);
                                 if (this._diffManager) {
-                                    await this._diffManager.initializeInlineDiff(state.relativePath, state.cleanContent);
+                                    await this._diffManager.initializeInlineDiff(state.relativePath);
                                 }
                                 if (this._activeSessionId === sessionId) {
                                     this._sendModifiedFilesDebounced();

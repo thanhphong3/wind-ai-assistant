@@ -155,7 +155,7 @@ body {
 
 .suggestions-grid {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 12px;
     width: 100%;
     margin-top: 8px;
@@ -3854,4 +3854,173 @@ textarea::placeholder {
     width: 100%;
     height: 100%;
     border: none;
+}
+
+/* Missing UI Fixes */
+.mention-dropdown {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 16px;
+    right: 16px;
+    max-height: 250px;
+    overflow-y: auto;
+    background: #18191a;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 0;
+}
+
+.mention-dropdown.hidden {
+    display: none !important;
+}
+
+.mention-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-primary);
+    gap: 10px;
+    transition: all 0.15s ease;
+}
+
+.mention-item:hover, .mention-item.active {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.mention-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    color: var(--text-secondary);
+}
+
+.mention-label {
+    flex: 1;
+}
+
+/* Tabs UI */
+.tab-header {
+    display: flex;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    gap: 16px;
+    flex-shrink: 0;
+}
+.tab-btn {
+    background: none;
+    border: none;
+    padding: 12px 4px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+}
+.tab-btn:hover {
+    color: var(--text-primary);
+}
+.tab-btn.active {
+    color: var(--accent-blue);
+    font-weight: 600;
+    border-bottom-color: var(--accent-blue);
+}
+.tab-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+.tab-panel.hidden {
+    display: none !important;
+}
+.panel-section {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+}
+.panel-section h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.empty-state {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: italic;
+}
+
+/* Browser Playback */
+.browser-playback-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.browser-viewport {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.browser-viewport img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+.viewport-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.6);
+    padding: 8px 16px;
+    border-radius: 16px;
+    color: white;
+    font-size: 12px;
+    pointer-events: none;
+}
+.browser-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+}
+.browser-ctrl-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+.browser-ctrl-btn:hover:not(:disabled) {
+    background: rgba(255,255,255,0.1);
+}
+.browser-ctrl-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
