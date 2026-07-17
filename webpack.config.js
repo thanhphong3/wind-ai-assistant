@@ -18,7 +18,8 @@ const config = {
     externals: {
         vscode: 'commonjs vscode',
         axios: 'commonjs axios',
-        'puppeteer-core': 'commonjs puppeteer-core'
+        'puppeteer-core': 'commonjs puppeteer-core',
+        'ws': 'commonjs ws'
     },
     resolve: {
         extensions: ['.ts', '.js']

@@ -166,6 +166,7 @@ Tool Guidelines:
 - runTerminalCommand: execute interactive shell commands in the visible VS Code terminal panel (Wind Agent Terminal).
 - Browser automation: use browserOpen, browserClick, browserType, browserGetContent, browserScreenshot, browserClose, or the advanced browserSubagent.
 - saveKnowledgeItem: Use this proactively to save any important setup, architectural rules, or context you learn about the project.
+- Video generation: use listVoices to browse available TTS voices (75+ languages), then generateVideo with scenes, voice, and output path to create videos with voiceover and subtitles. Requires FFmpeg.
 - If 'implementation_plan.md' or 'task.md' exists, read/reference them to guide your work.`;
     } else if (mode === 'goal') {
         promptText = `You are Wind Agent, an autonomous software engineering assistant running in GOAL mode.
@@ -213,6 +214,7 @@ Tool Guidelines:
 - runTerminalCommand: execute interactive shell commands in the visible VS Code terminal panel (Wind Agent Terminal).
 - Browser automation: use browserOpen, browserClick, browserType, browserGetContent, browserScreenshot, browserClose, or the advanced browserSubagent.
 - saveKnowledgeItem: Use this proactively to save any important setup, architectural rules, or context you learn about the project.
+- Video generation: use listVoices to browse available TTS voices (75+ languages), then generateVideo with scenes, voice, and output path to create videos with voiceover and subtitles. Requires FFmpeg.
 - If 'implementation_plan.md' or 'task.md' exists, read/reference them to guide your work.`;
     }
 

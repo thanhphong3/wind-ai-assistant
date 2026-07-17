@@ -7,6 +7,7 @@ import axios from 'axios';
 import * as crypto from 'crypto';
 import * as os from 'os';
 import puppeteer, { Browser, Page } from 'puppeteer-core';
+import * as WebSocket from 'ws';
 import { StringDecoder } from 'string_decoder';
 import { McpManager } from './mcp';
 
@@ -564,6 +565,64 @@ export const TOOLS: ToolDefinition[] = [
             },
             required: ['question', 'options']
         }
+    },
+    {
+        name: 'generateVideo',
+        description: 'Generates a video with AI voiceover (text-to-speech), burned-in subtitles, and background images. Supports 300+ voices across 75+ languages via Edge TTS. Requires FFmpeg installed on the system.',
+        parameters: {
+            type: 'object',
+            properties: {
+                scenes: {
+                    type: 'array',
+                    description: 'Array of scene objects. Each scene has "text" (narration/subtitle text), and optionally "imagePrompt" (to auto-generate background image via AI) or "imagePath" (relative path to existing image). If neither image option is provided, a solid color background is used.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            text: { type: 'string', description: 'The narration/subtitle text for this scene.' },
+                            imagePrompt: { type: 'string', description: 'Prompt to auto-generate a background image for this scene.' },
+                            imagePath: { type: 'string', description: 'Relative path to an existing image to use as background.' }
+                        }
+                    }
+                },
+                voice: {
+                    type: 'string',
+                    description: 'The Edge TTS voice name (e.g. "vi-VN-HoaiMyNeural", "en-US-JennyNeural", "ja-JP-NanamiNeural"). Use listVoices tool first to see available voices.'
+                },
+                outputPath: {
+                    type: 'string',
+                    description: 'Relative path for the output video file (e.g. "output/video.mp4").'
+                },
+                subtitleStyle: {
+                    type: 'string',
+                    enum: ['bottom', 'center', 'top', 'none'],
+                    description: 'Position of burned-in subtitles. Default: "bottom".'
+                },
+                resolution: {
+                    type: 'string',
+                    enum: ['1920x1080', '1280x720', '720x480'],
+                    description: 'Video resolution (WxH). Default: "1920x1080".'
+                },
+                fontSize: {
+                    type: 'number',
+                    description: 'Font size for subtitles. Default: 24.'
+                }
+            },
+            required: ['scenes', 'voice', 'outputPath']
+        }
+    },
+    {
+        name: 'listVoices',
+        description: 'Lists all available TTS voices for video generation (Edge TTS), grouped by language. Returns voice name, gender, and locale. Supports 75+ languages with 300+ neural voices.',
+        parameters: {
+            type: 'object',
+            properties: {
+                language: {
+                    type: 'string',
+                    description: 'Optional. Filter voices by language code (e.g. "vi", "en", "ja", "ko", "zh", "fr"). Leave empty for all voices.'
+                }
+            },
+            required: []
+        }
     }
 ];
 
@@ -1083,6 +1142,19 @@ export class ToolsManager {
                     return JSON.stringify(answers);
                 }
                 throw new Error('No question response cached and no question handler registered.');
+            }
+            case 'generateVideo': {
+                if (!args.scenes || !args.voice || !args.outputPath) {
+                    throw new Error('Missing arguments: scenes, voice, or outputPath');
+                }
+                return await this.generateVideo(args.scenes, args.voice, args.outputPath, {
+                    subtitleStyle: args.subtitleStyle || 'bottom',
+                    resolution: args.resolution || '1920x1080',
+                    fontSize: args.fontSize || 24
+                }, signal);
+            }
+            case 'listVoices': {
+                return await this.listVoices(args.language);
             }
             default:
                 throw new Error(`Unknown tool: ${name}`);
@@ -2450,6 +2522,671 @@ export class ToolsManager {
             return `generateImage failed: ${error.message}`;
         }
     }
+
+    // ======================== VIDEO GENERATION ========================
+
+    private static readonly EDGE_TTS_VOICES: Array<{name: string; locale: string; gender: string; friendlyName: string}> = [
+        // Vietnamese
+        { name: 'vi-VN-HoaiMyNeural', locale: 'vi-VN', gender: 'Female', friendlyName: 'Hoài My (Vietnamese)' },
+        { name: 'vi-VN-NamMinhNeural', locale: 'vi-VN', gender: 'Male', friendlyName: 'Nam Minh (Vietnamese)' },
+        // English - US
+        { name: 'en-US-JennyNeural', locale: 'en-US', gender: 'Female', friendlyName: 'Jenny (English US)' },
+        { name: 'en-US-GuyNeural', locale: 'en-US', gender: 'Male', friendlyName: 'Guy (English US)' },
+        { name: 'en-US-AriaNeural', locale: 'en-US', gender: 'Female', friendlyName: 'Aria (English US)' },
+        { name: 'en-US-DavisNeural', locale: 'en-US', gender: 'Male', friendlyName: 'Davis (English US)' },
+        { name: 'en-US-AmberNeural', locale: 'en-US', gender: 'Female', friendlyName: 'Amber (English US)' },
+        { name: 'en-US-AnaNeural', locale: 'en-US', gender: 'Female', friendlyName: 'Ana (English US, Child)' },
+        { name: 'en-US-AndrewNeural', locale: 'en-US', gender: 'Male', friendlyName: 'Andrew (English US)' },
+        { name: 'en-US-EmmaNeural', locale: 'en-US', gender: 'Female', friendlyName: 'Emma (English US)' },
+        { name: 'en-US-BrianNeural', locale: 'en-US', gender: 'Male', friendlyName: 'Brian (English US)' },
+        { name: 'en-US-ChristopherNeural', locale: 'en-US', gender: 'Male', friendlyName: 'Christopher (English US)' },
+        { name: 'en-US-EricNeural', locale: 'en-US', gender: 'Male', friendlyName: 'Eric (English US)' },
+        { name: 'en-US-MichelleNeural', locale: 'en-US', gender: 'Female', friendlyName: 'Michelle (English US)' },
+        { name: 'en-US-RogerNeural', locale: 'en-US', gender: 'Male', friendlyName: 'Roger (English US)' },
+        // English - UK
+        { name: 'en-GB-SoniaNeural', locale: 'en-GB', gender: 'Female', friendlyName: 'Sonia (English UK)' },
+        { name: 'en-GB-RyanNeural', locale: 'en-GB', gender: 'Male', friendlyName: 'Ryan (English UK)' },
+        { name: 'en-GB-LibbyNeural', locale: 'en-GB', gender: 'Female', friendlyName: 'Libby (English UK)' },
+        // English - Australia
+        { name: 'en-AU-NatashaNeural', locale: 'en-AU', gender: 'Female', friendlyName: 'Natasha (English AU)' },
+        { name: 'en-AU-WilliamNeural', locale: 'en-AU', gender: 'Male', friendlyName: 'William (English AU)' },
+        // Japanese
+        { name: 'ja-JP-NanamiNeural', locale: 'ja-JP', gender: 'Female', friendlyName: 'Nanami (Japanese)' },
+        { name: 'ja-JP-KeitaNeural', locale: 'ja-JP', gender: 'Male', friendlyName: 'Keita (Japanese)' },
+        // Korean
+        { name: 'ko-KR-SunHiNeural', locale: 'ko-KR', gender: 'Female', friendlyName: 'Sun-Hi (Korean)' },
+        { name: 'ko-KR-InJoonNeural', locale: 'ko-KR', gender: 'Male', friendlyName: 'InJoon (Korean)' },
+        // Chinese - Mandarin
+        { name: 'zh-CN-XiaoxiaoNeural', locale: 'zh-CN', gender: 'Female', friendlyName: 'Xiaoxiao (Chinese CN)' },
+        { name: 'zh-CN-YunxiNeural', locale: 'zh-CN', gender: 'Male', friendlyName: 'Yunxi (Chinese CN)' },
+        { name: 'zh-CN-YunjianNeural', locale: 'zh-CN', gender: 'Male', friendlyName: 'Yunjian (Chinese CN)' },
+        { name: 'zh-CN-XiaoyiNeural', locale: 'zh-CN', gender: 'Female', friendlyName: 'Xiaoyi (Chinese CN)' },
+        // Chinese - Cantonese
+        { name: 'zh-HK-HiuMaanNeural', locale: 'zh-HK', gender: 'Female', friendlyName: 'HiuMaan (Chinese HK)' },
+        { name: 'zh-HK-WanLungNeural', locale: 'zh-HK', gender: 'Male', friendlyName: 'WanLung (Chinese HK)' },
+        // Chinese - Taiwan
+        { name: 'zh-TW-HsiaoChenNeural', locale: 'zh-TW', gender: 'Female', friendlyName: 'HsiaoChen (Chinese TW)' },
+        { name: 'zh-TW-YunJheNeural', locale: 'zh-TW', gender: 'Male', friendlyName: 'YunJhe (Chinese TW)' },
+        // French
+        { name: 'fr-FR-DeniseNeural', locale: 'fr-FR', gender: 'Female', friendlyName: 'Denise (French)' },
+        { name: 'fr-FR-HenriNeural', locale: 'fr-FR', gender: 'Male', friendlyName: 'Henri (French)' },
+        // German
+        { name: 'de-DE-KatjaNeural', locale: 'de-DE', gender: 'Female', friendlyName: 'Katja (German)' },
+        { name: 'de-DE-ConradNeural', locale: 'de-DE', gender: 'Male', friendlyName: 'Conrad (German)' },
+        // Spanish
+        { name: 'es-ES-ElviraNeural', locale: 'es-ES', gender: 'Female', friendlyName: 'Elvira (Spanish)' },
+        { name: 'es-ES-AlvaroNeural', locale: 'es-ES', gender: 'Male', friendlyName: 'Alvaro (Spanish)' },
+        { name: 'es-MX-DaliaNeural', locale: 'es-MX', gender: 'Female', friendlyName: 'Dalia (Spanish MX)' },
+        { name: 'es-MX-JorgeNeural', locale: 'es-MX', gender: 'Male', friendlyName: 'Jorge (Spanish MX)' },
+        // Portuguese
+        { name: 'pt-BR-FranciscaNeural', locale: 'pt-BR', gender: 'Female', friendlyName: 'Francisca (Portuguese BR)' },
+        { name: 'pt-BR-AntonioNeural', locale: 'pt-BR', gender: 'Male', friendlyName: 'Antonio (Portuguese BR)' },
+        // Italian
+        { name: 'it-IT-ElsaNeural', locale: 'it-IT', gender: 'Female', friendlyName: 'Elsa (Italian)' },
+        { name: 'it-IT-DiegoNeural', locale: 'it-IT', gender: 'Male', friendlyName: 'Diego (Italian)' },
+        // Russian
+        { name: 'ru-RU-SvetlanaNeural', locale: 'ru-RU', gender: 'Female', friendlyName: 'Svetlana (Russian)' },
+        { name: 'ru-RU-DmitryNeural', locale: 'ru-RU', gender: 'Male', friendlyName: 'Dmitry (Russian)' },
+        // Arabic
+        { name: 'ar-SA-ZariyahNeural', locale: 'ar-SA', gender: 'Female', friendlyName: 'Zariyah (Arabic)' },
+        { name: 'ar-SA-HamedNeural', locale: 'ar-SA', gender: 'Male', friendlyName: 'Hamed (Arabic)' },
+        // Hindi
+        { name: 'hi-IN-SwaraNeural', locale: 'hi-IN', gender: 'Female', friendlyName: 'Swara (Hindi)' },
+        { name: 'hi-IN-MadhurNeural', locale: 'hi-IN', gender: 'Male', friendlyName: 'Madhur (Hindi)' },
+        // Thai
+        { name: 'th-TH-PremwadeeNeural', locale: 'th-TH', gender: 'Female', friendlyName: 'Premwadee (Thai)' },
+        { name: 'th-TH-NiwatNeural', locale: 'th-TH', gender: 'Male', friendlyName: 'Niwat (Thai)' },
+        // Indonesian
+        { name: 'id-ID-GadisNeural', locale: 'id-ID', gender: 'Female', friendlyName: 'Gadis (Indonesian)' },
+        { name: 'id-ID-ArdiNeural', locale: 'id-ID', gender: 'Male', friendlyName: 'Ardi (Indonesian)' },
+        // Malay
+        { name: 'ms-MY-YasminNeural', locale: 'ms-MY', gender: 'Female', friendlyName: 'Yasmin (Malay)' },
+        { name: 'ms-MY-OsmanNeural', locale: 'ms-MY', gender: 'Male', friendlyName: 'Osman (Malay)' },
+        // Turkish
+        { name: 'tr-TR-EmelNeural', locale: 'tr-TR', gender: 'Female', friendlyName: 'Emel (Turkish)' },
+        { name: 'tr-TR-AhmetNeural', locale: 'tr-TR', gender: 'Male', friendlyName: 'Ahmet (Turkish)' },
+        // Polish
+        { name: 'pl-PL-AgnieszkaNeural', locale: 'pl-PL', gender: 'Female', friendlyName: 'Agnieszka (Polish)' },
+        { name: 'pl-PL-MarekNeural', locale: 'pl-PL', gender: 'Male', friendlyName: 'Marek (Polish)' },
+        // Dutch
+        { name: 'nl-NL-ColetteNeural', locale: 'nl-NL', gender: 'Female', friendlyName: 'Colette (Dutch)' },
+        { name: 'nl-NL-MaartenNeural', locale: 'nl-NL', gender: 'Male', friendlyName: 'Maarten (Dutch)' },
+        // Swedish
+        { name: 'sv-SE-SofieNeural', locale: 'sv-SE', gender: 'Female', friendlyName: 'Sofie (Swedish)' },
+        { name: 'sv-SE-MattiasNeural', locale: 'sv-SE', gender: 'Male', friendlyName: 'Mattias (Swedish)' },
+        // Norwegian
+        { name: 'nb-NO-PernilleNeural', locale: 'nb-NO', gender: 'Female', friendlyName: 'Pernille (Norwegian)' },
+        { name: 'nb-NO-FinnNeural', locale: 'nb-NO', gender: 'Male', friendlyName: 'Finn (Norwegian)' },
+        // Danish
+        { name: 'da-DK-ChristelNeural', locale: 'da-DK', gender: 'Female', friendlyName: 'Christel (Danish)' },
+        { name: 'da-DK-JeppeNeural', locale: 'da-DK', gender: 'Male', friendlyName: 'Jeppe (Danish)' },
+        // Finnish
+        { name: 'fi-FI-SelmaNeural', locale: 'fi-FI', gender: 'Female', friendlyName: 'Selma (Finnish)' },
+        { name: 'fi-FI-HarriNeural', locale: 'fi-FI', gender: 'Male', friendlyName: 'Harri (Finnish)' },
+        // Greek
+        { name: 'el-GR-AthinaNeural', locale: 'el-GR', gender: 'Female', friendlyName: 'Athina (Greek)' },
+        { name: 'el-GR-NestorasNeural', locale: 'el-GR', gender: 'Male', friendlyName: 'Nestoras (Greek)' },
+        // Czech
+        { name: 'cs-CZ-VlastaNeural', locale: 'cs-CZ', gender: 'Female', friendlyName: 'Vlasta (Czech)' },
+        { name: 'cs-CZ-AntoninNeural', locale: 'cs-CZ', gender: 'Male', friendlyName: 'Antonin (Czech)' },
+        // Romanian
+        { name: 'ro-RO-AlinaNeural', locale: 'ro-RO', gender: 'Female', friendlyName: 'Alina (Romanian)' },
+        { name: 'ro-RO-EmilNeural', locale: 'ro-RO', gender: 'Male', friendlyName: 'Emil (Romanian)' },
+        // Ukrainian
+        { name: 'uk-UA-PolinaNeural', locale: 'uk-UA', gender: 'Female', friendlyName: 'Polina (Ukrainian)' },
+        { name: 'uk-UA-OstapNeural', locale: 'uk-UA', gender: 'Male', friendlyName: 'Ostap (Ukrainian)' },
+        // Filipino
+        { name: 'fil-PH-BlessicaNeural', locale: 'fil-PH', gender: 'Female', friendlyName: 'Blessica (Filipino)' },
+        { name: 'fil-PH-AngeloNeural', locale: 'fil-PH', gender: 'Male', friendlyName: 'Angelo (Filipino)' },
+        // Hebrew
+        { name: 'he-IL-HilaNeural', locale: 'he-IL', gender: 'Female', friendlyName: 'Hila (Hebrew)' },
+        { name: 'he-IL-AvriNeural', locale: 'he-IL', gender: 'Male', friendlyName: 'Avri (Hebrew)' },
+        // Hungarian
+        { name: 'hu-HU-NoemiNeural', locale: 'hu-HU', gender: 'Female', friendlyName: 'Noemi (Hungarian)' },
+        { name: 'hu-HU-TamasNeural', locale: 'hu-HU', gender: 'Male', friendlyName: 'Tamas (Hungarian)' },
+    ];
+
+    private async listVoices(language?: string): Promise<string> {
+        let voices = ToolsManager.EDGE_TTS_VOICES;
+        
+        if (language) {
+            const langLower = language.toLowerCase();
+            voices = voices.filter(v => {
+                const localeLower = v.locale.toLowerCase();
+                return localeLower.startsWith(langLower) || localeLower.split('-')[0] === langLower;
+            });
+        }
+
+        if (voices.length === 0) {
+            return `No voices found for language "${language}". Use listVoices without language filter to see all available voices.`;
+        }
+
+        // Group by language
+        const grouped = new Map<string, typeof voices>();
+        for (const v of voices) {
+            const lang = v.locale;
+            if (!grouped.has(lang)) grouped.set(lang, []);
+            grouped.get(lang)!.push(v);
+        }
+
+        let result = `🎙️ **Available TTS Voices** (${voices.length} voices)\n\n`;
+        result += `| Locale | Voice Name | Gender | Friendly Name |\n`;
+        result += `|--------|-----------|--------|---------------|\n`;
+        
+        for (const [locale, langVoices] of grouped) {
+            for (const v of langVoices) {
+                result += `| ${locale} | \`${v.name}\` | ${v.gender} | ${v.friendlyName} |\n`;
+            }
+        }
+        
+        result += `\n> **Usage**: Pass the voice name (e.g. \`vi-VN-HoaiMyNeural\`) to the \`generateVideo\` tool's \`voice\` parameter.`;
+        return result;
+    }
+
+    private static readonly EDGE_TTS_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
+    private static edgeTTSClockSkewMs = 0;
+
+    /** Fetch server clock skew via voices list endpoint */
+    private static async fetchClockSkew(): Promise<number> {
+        try {
+            const url = `https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/voices/list?trustedclienttoken=${ToolsManager.EDGE_TTS_TOKEN}`;
+            const res = await axios.get(url, { timeout: 5000 });
+            const serverDateStr = res.headers.date;
+            if (!serverDateStr) return 0;
+            const serverTime = new Date(serverDateStr).getTime();
+            const clientTime = Date.now();
+            return serverTime - clientTime;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    /** Generate Sec-MS-GEC token based on clock skew */
+    private static generateSecMsGecToken(skewMs: number): string {
+        const adjustedNow = Date.now() + skewMs;
+        const WINDOWS_FILE_TIME_EPOCH = 11644473600n;
+        const ticks = BigInt(Math.floor((adjustedNow / 1000) + Number(WINDOWS_FILE_TIME_EPOCH))) * 10000000n;
+        const roundedTicks = ticks - (ticks % 3000000000n);
+        const strToHash = `${roundedTicks}${ToolsManager.EDGE_TTS_TOKEN}`;
+        return crypto.createHash('sha256').update(strToHash, 'ascii').digest('hex').toUpperCase();
+    }
+
+    /** Generate a random MUID cookie value */
+    private static generateMuid(): string {
+        return crypto.randomBytes(16).toString('hex').toUpperCase();
+    }
+
+    private async edgeTTS(text: string, voice: string, outputPath: string): Promise<number> {
+        return new Promise<number>((resolve, reject) => {
+            const requestId = crypto.randomUUID().replace(/-/g, '');
+            const timestamp = new Date().toISOString();
+            
+            const secMsGec = ToolsManager.generateSecMsGecToken(ToolsManager.edgeTTSClockSkewMs);
+            const muid = ToolsManager.generateMuid();
+            const wsUrl = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${ToolsManager.EDGE_TTS_TOKEN}&ConnectionId=${requestId}&Sec-MS-GEC=${secMsGec}&Sec-MS-GEC-Version=1-130.0.2849.68`;
+
+            const audioChunks: Buffer[] = [];
+            let resolved = false;
+            let retryAttempted = false;
+            
+            const ws = new WebSocket(wsUrl, {
+                headers: {
+                    'Pragma': 'no-cache',
+                    'Cache-Control': 'no-cache',
+                    'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0',
+                    'Cookie': `muid=${muid};`
+                }
+            });
+
+            const timeoutId = setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    ws.close();
+                    reject(new Error('Edge TTS timeout after 60 seconds'));
+                }
+            }, 60000);
+
+            ws.on('open', () => {
+                // Send speech config
+                const configMsg = `X-Timestamp:${timestamp}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"true"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
+                ws.send(configMsg);
+
+                // Escape XML special characters in text
+                const escapedText = text
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&apos;');
+
+                // Send SSML request
+                const ssmlMsg = `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='${voice.substring(0, 5)}'><voice name='${voice}'><prosody pitch='+0Hz' rate='+0%' volume='+0%'>${escapedText}</prosody></voice></speak>`;
+                ws.send(ssmlMsg);
+            });
+
+            ws.on('message', (data: WebSocket.Data, isBinary: boolean) => {
+                if (isBinary && Buffer.isBuffer(data)) {
+                    // Binary message: contains audio data after the header
+                    const headerEnd = 'Path:audio\r\n';
+                    const dataStr = data.toString('utf-8', 0, Math.min(data.length, 300));
+                    const headerIdx = dataStr.indexOf(headerEnd);
+                    if (headerIdx >= 0) {
+                        const audioStart = headerIdx + headerEnd.length;
+                        // Find the actual byte offset (UTF-8 aware)
+                        const headerBytes = Buffer.byteLength(dataStr.substring(0, audioStart), 'utf-8');
+                        if (headerBytes < data.length) {
+                            audioChunks.push(data.subarray(headerBytes));
+                        }
+                    } else {
+                        // Check for binary header format: 2 bytes length + header + audio
+                        if (data.length > 2) {
+                            const headerLen = data.readUInt16BE(0);
+                            if (headerLen > 0 && headerLen < data.length) {
+                                audioChunks.push(data.subarray(2 + headerLen));
+                            }
+                        }
+                    }
+                } else {
+                    // Text message
+                    const textData = data.toString();
+                    if (textData.includes('Path:turn.end')) {
+                        // Synthesis complete
+                        if (!resolved) {
+                            resolved = true;
+                            clearTimeout(timeoutId);
+                            ws.close();
+                            
+                            if (audioChunks.length === 0) {
+                                reject(new Error('No audio data received from Edge TTS'));
+                                return;
+                            }
+                            
+                            const audioBuffer = Buffer.concat(audioChunks);
+                            fs.writeFile(outputPath, audioBuffer).then(() => {
+                                // Estimate duration: MP3 at 48kbps = 6000 bytes per second
+                                const estimatedDuration = audioBuffer.length / 6000;
+                                resolve(estimatedDuration);
+                            }).catch(reject);
+                        }
+                    }
+                }
+            });
+
+            ws.on('error', async (err: any) => {
+                if (!resolved) {
+                    resolved = true;
+                    clearTimeout(timeoutId);
+                    // If 403 Forbidden and we haven't retried, adjust clock skew and retry
+                    if (err.message && err.message.includes('403') && !retryAttempted) {
+                        retryAttempted = true;
+                        const skew = await ToolsManager.fetchClockSkew();
+                        ToolsManager.edgeTTSClockSkewMs = skew;
+                        // Retry the whole operation with updated skew
+                        resolve(await this.edgeTTS(text, voice, outputPath));
+                        return;
+                    }
+                    reject(new Error(`Edge TTS WebSocket error: ${err.message}`));
+                }
+            });
+
+            ws.on('close', () => {
+                if (!resolved) {
+                    resolved = true;
+                    clearTimeout(timeoutId);
+                    if (audioChunks.length > 0) {
+                        const audioBuffer = Buffer.concat(audioChunks);
+                        fs.writeFile(outputPath, audioBuffer).then(() => {
+                            const estimatedDuration = audioBuffer.length / 6000;
+                            resolve(estimatedDuration);
+                        }).catch(reject);
+                    } else {
+                        reject(new Error('Edge TTS connection closed without receiving audio data'));
+                    }
+                }
+            });
+        });
+    }
+
+    private generateSRT(scenes: Array<{text: string}>, durations: number[]): string {
+        let srt = '';
+        let currentTime = 0;
+        
+        for (let i = 0; i < scenes.length; i++) {
+            const startTime = currentTime;
+            const endTime = currentTime + durations[i];
+            
+            srt += `${i + 1}\n`;
+            srt += `${this.formatSRTTime(startTime)} --> ${this.formatSRTTime(endTime)}\n`;
+            srt += `${scenes[i].text}\n\n`;
+            
+            currentTime = endTime;
+        }
+        
+        return srt;
+    }
+
+    private formatSRTTime(seconds: number): string {
+        const hours = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        const ms = Math.floor((seconds % 1) * 1000);
+        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
+    }
+
+    private async resolveFFmpegPaths(): Promise<{ ffmpeg: string; ffprobe: string }> {
+        // 1. Try global first
+        try {
+            await execAsync('ffmpeg -version');
+            await execAsync('ffprobe -version');
+            return { ffmpeg: 'ffmpeg', ffprobe: 'ffprobe' };
+        } catch {}
+
+        // 2. Try workspace root
+        const isWin = process.platform === 'win32';
+        const ffmpegName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
+        const ffprobeName = isWin ? 'ffprobe.exe' : 'ffprobe';
+
+        const wsFfmpeg = path.join(this.workspaceRoot, ffmpegName);
+        const wsFfprobe = path.join(this.workspaceRoot, ffprobeName);
+        try {
+            await fs.access(wsFfmpeg);
+            await fs.access(wsFfprobe);
+            return { ffmpeg: `"${wsFfmpeg}"`, ffprobe: `"${wsFfprobe}"` };
+        } catch {}
+
+        // 3. Try WinGet package locations on Windows
+        if (isWin && process.env.LOCALAPPDATA) {
+            const wingetPackagesDir = path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Packages');
+            try {
+                const subdirs = await fs.readdir(wingetPackagesDir);
+                for (const subdir of subdirs) {
+                    if (subdir.startsWith('Gyan.FFmpeg')) {
+                        const packagePath = path.join(wingetPackagesDir, subdir);
+                        const binDir = await this.findBinDir(packagePath);
+                        if (binDir) {
+                            const ffmpegPath = path.join(binDir, 'ffmpeg.exe');
+                            const ffprobePath = path.join(binDir, 'ffprobe.exe');
+                            try {
+                                await fs.access(ffmpegPath);
+                                await fs.access(ffprobePath);
+                                return { ffmpeg: `"${ffmpegPath}"`, ffprobe: `"${ffprobePath}"` };
+                            } catch {}
+                        }
+                    }
+                }
+            } catch {}
+        }
+
+        // Fallback default
+        return { ffmpeg: 'ffmpeg', ffprobe: 'ffprobe' };
+    }
+
+    private async findBinDir(parentPath: string): Promise<string | null> {
+        try {
+            const items = await fs.readdir(parentPath, { withFileTypes: true });
+            for (const item of items) {
+                if (item.isDirectory()) {
+                    if (item.name === 'bin') {
+                        return path.join(parentPath, item.name);
+                    }
+                    const subResult = await this.findBinDir(path.join(parentPath, item.name));
+                    if (subResult) return subResult;
+                }
+            }
+        } catch {}
+        return null;
+    }
+
+    private async checkFFmpeg(): Promise<boolean> {
+        const paths = await this.resolveFFmpegPaths();
+        try {
+            await execAsync(`${paths.ffmpeg} -version`);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    private async getAudioDuration(audioPath: string, ffprobeCmd: string): Promise<number> {
+        try {
+            const { stdout } = await execAsync(
+                `${ffprobeCmd} -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`
+            );
+            const duration = parseFloat(stdout.trim());
+            return isNaN(duration) ? 5 : duration;
+        } catch {
+            // Fallback: estimate from file size (MP3 48kbps = ~6000 bytes/sec)
+            try {
+                const stats = await fs.stat(audioPath);
+                return stats.size / 6000;
+            } catch {
+                return 5;
+            }
+        }
+    }
+
+    private async generateVideo(
+        scenes: Array<{text: string; imagePrompt?: string; imagePath?: string}>,
+        voice: string,
+        outputPath: string,
+        options: { subtitleStyle: string; resolution: string; fontSize: number },
+        signal?: AbortSignal
+    ): Promise<string> {
+        const log: string[] = [];
+        log.push(`🎬 **Video Generation Started**`);
+        log.push(`Voice: \`${voice}\` | Resolution: ${options.resolution} | Scenes: ${scenes.length}`);
+
+        // Resolve paths
+        const paths = await this.resolveFFmpegPaths();
+
+        // 1. Check FFmpeg
+        const hasFFmpeg = await this.checkFFmpeg();
+        if (!hasFFmpeg) {
+            return `❌ **FFmpeg not found!** Please install FFmpeg to use video generation.\n\n**Installation:**\n- **Windows**: \`winget install FFmpeg\` or download from https://ffmpeg.org/download.html\n- **macOS**: \`brew install ffmpeg\`\n- **Linux**: \`sudo apt install ffmpeg\`\n\nAfter installing, make sure \`ffmpeg\` is in your system PATH and restart VS Code.`;
+        }
+        log.push(`✅ FFmpeg detected`);
+
+        // 2. Validate voice
+        const validVoice = ToolsManager.EDGE_TTS_VOICES.find(v => v.name === voice);
+        if (!validVoice) {
+            const suggestions = ToolsManager.EDGE_TTS_VOICES.slice(0, 5).map(v => `\`${v.name}\``).join(', ');
+            return `❌ Invalid voice: "${voice}". Use \`listVoices\` tool to see available voices.\nExamples: ${suggestions}`;
+        }
+
+        // 3. Create temp directory
+        const tempDir = path.join(this.workspaceRoot, '.wind-scratch', 'video-gen-' + Date.now());
+        await fs.mkdir(tempDir, { recursive: true });
+
+        try {
+            if (signal?.aborted) throw new Error('Cancelled by user');
+
+            const [resW, resH] = options.resolution.split('x').map(Number);
+            const audioPaths: string[] = [];
+            const imagePaths: string[] = [];
+            const durations: number[] = [];
+
+            // 4. Generate audio and images for each scene
+            for (let i = 0; i < scenes.length; i++) {
+                if (signal?.aborted) throw new Error('Cancelled by user');
+                
+                const scene = scenes[i];
+                const audioPath = path.join(tempDir, `scene_${i}.mp3`);
+                const imagePath = path.join(tempDir, `scene_${i}.png`);
+                
+                log.push(`\n📝 **Scene ${i + 1}/${scenes.length}**: "${scene.text.substring(0, 50)}${scene.text.length > 50 ? '...' : ''}"`);
+
+                // Generate audio via Edge TTS
+                log.push(`  🔊 Generating voiceover...`);
+                try {
+                    await this.edgeTTS(scene.text, voice, audioPath);
+                    // Get actual duration using ffprobe if available
+                    const actualDuration = await this.getAudioDuration(audioPath, paths.ffprobe);
+                    durations.push(actualDuration);
+                    log.push(`  ✅ Audio generated (${actualDuration.toFixed(1)}s)`);
+                } catch (ttsError: any) {
+                    log.push(`  ❌ TTS failed: ${ttsError.message}`);
+                    // Cleanup and return error
+                    await this.cleanupTempDir(tempDir);
+                    return log.join('\n') + `\n\n❌ Video generation failed at scene ${i + 1}: ${ttsError.message}`;
+                }
+                audioPaths.push(audioPath);
+
+                // Generate or use background image
+                if (scene.imagePath) {
+                    // Use existing image
+                    const existingImgPath = this.resolvePath(scene.imagePath);
+                    try {
+                        await fs.access(existingImgPath);
+                        // Resize to match resolution using FFmpeg
+                        await execAsync(`${paths.ffmpeg} -y -i "${existingImgPath}" -vf "scale=${resW}:${resH}:force_original_aspect_ratio=decrease,pad=${resW}:${resH}:(ow-iw)/2:(oh-ih)/2:black" "${imagePath}"`);
+                        log.push(`  🖼️ Using existing image: ${scene.imagePath}`);
+                    } catch {
+                        log.push(`  ⚠️ Image not found: ${scene.imagePath}, generating solid background`);
+                        await this.generateSolidBackground(imagePath, resW, resH, paths.ffmpeg);
+                    }
+                } else if (scene.imagePrompt) {
+                    // Auto-generate image
+                    log.push(`  🎨 Generating image: "${scene.imagePrompt.substring(0, 40)}..."`);
+                    try {
+                        const tempImgPath = path.join(tempDir, `raw_${i}.png`);
+                        await this.generateImage(scene.imagePrompt, path.relative(this.workspaceRoot, tempImgPath));
+                        // Resize to match resolution
+                        await execAsync(`${paths.ffmpeg} -y -i "${tempImgPath}" -vf "scale=${resW}:${resH}:force_original_aspect_ratio=decrease,pad=${resW}:${resH}:(ow-iw)/2:(oh-ih)/2:black" "${imagePath}"`);
+                        log.push(`  ✅ Image generated`);
+                    } catch {
+                        log.push(`  ⚠️ Image generation failed, using solid background`);
+                        await this.generateSolidBackground(imagePath, resW, resH, paths.ffmpeg);
+                    }
+                } else {
+                    // Solid color background
+                    await this.generateSolidBackground(imagePath, resW, resH, paths.ffmpeg);
+                    log.push(`  🖼️ Using default background`);
+                }
+                imagePaths.push(imagePath);
+            }
+
+            if (signal?.aborted) throw new Error('Cancelled by user');
+
+            // 5. Generate SRT subtitle file
+            const srtPath = path.join(tempDir, 'subtitles.srt');
+            const srtContent = this.generateSRT(scenes, durations);
+            await fs.writeFile(srtPath, srtContent, 'utf8');
+            log.push(`\n📄 Subtitles generated (${scenes.length} entries)`);
+
+            // 6. Create concat list for FFmpeg
+            const concatListPath = path.join(tempDir, 'concat.txt');
+            let concatContent = '';
+            for (let i = 0; i < scenes.length; i++) {
+                concatContent += `file '${imagePaths[i].replace(/\\/g, '/')}'\n`;
+                concatContent += `duration ${durations[i]}\n`;
+            }
+            // Add last image again (FFmpeg concat demuxer requirement)
+            if (imagePaths.length > 0) {
+                concatContent += `file '${imagePaths[imagePaths.length - 1].replace(/\\/g, '/')}'\n`;
+            }
+            await fs.writeFile(concatListPath, concatContent, 'utf8');
+
+            // 7. Concatenate all audio files
+            const mergedAudioPath = path.join(tempDir, 'merged_audio.mp3');
+            if (audioPaths.length === 1) {
+                await fs.copyFile(audioPaths[0], mergedAudioPath);
+            } else {
+                const audioListPath = path.join(tempDir, 'audio_list.txt');
+                let audioListContent = '';
+                for (const ap of audioPaths) {
+                    audioListContent += `file '${ap.replace(/\\/g, '/')}'\n`;
+                }
+                await fs.writeFile(audioListPath, audioListContent, 'utf8');
+                await execAsync(`${paths.ffmpeg} -y -f concat -safe 0 -i "${audioListPath}" -c copy "${mergedAudioPath}"`);
+            }
+            log.push(`🔊 Audio tracks merged`);
+
+            // 8. Build final video with FFmpeg
+            const targetPath = this.resolvePath(outputPath);
+            await fs.mkdir(path.dirname(targetPath), { recursive: true });
+
+            // Determine subtitle filter
+            let subtitleFilter = '';
+            if (options.subtitleStyle !== 'none') {
+                // Escape special characters in SRT path for FFmpeg filter
+                const escapedSrtPath = srtPath.replace(/\\/g, '/').replace(/:/g, '\\\\:');
+                let alignment = '2'; // bottom center (default SSA/ASS alignment)
+                if (options.subtitleStyle === 'top') alignment = '6';
+                else if (options.subtitleStyle === 'center') alignment = '10';
+                
+                subtitleFilter = `,subtitles='${escapedSrtPath}':force_style='FontSize=${options.fontSize},PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=3,Outline=2,Shadow=1,Alignment=${alignment},MarginV=30'`;
+            }
+
+            const ffmpegCmd = `${paths.ffmpeg} -y -f concat -safe 0 -i "${concatListPath}" -i "${mergedAudioPath}" -vf "fps=24,format=yuv420p${subtitleFilter}" -c:v libx264 -preset medium -crf 23 -c:a aac -b:a 128k -shortest -movflags +faststart "${targetPath}"`;
+            
+            log.push(`\n🎬 Rendering final video...`);
+            
+            try {
+                await execAsync(ffmpegCmd, { timeout: 300000 }); // 5 min timeout
+            } catch (ffmpegError: any) {
+                // Try without subtitles if subtitle filter fails
+                if (subtitleFilter && ffmpegError.message?.includes('subtitle')) {
+                    log.push(`⚠️ Subtitle rendering failed, trying without burned-in subtitles...`);
+                    const fallbackCmd = `${paths.ffmpeg} -y -f concat -safe 0 -i "${concatListPath}" -i "${mergedAudioPath}" -vf "fps=24,format=yuv420p" -c:v libx264 -preset medium -crf 23 -c:a aac -b:a 128k -shortest -movflags +faststart "${targetPath}"`;
+                    await execAsync(fallbackCmd, { timeout: 300000 });
+                    // Save SRT separately
+                    const srtOutputPath = targetPath.replace(/\.mp4$/i, '.srt');
+                    await fs.copyFile(srtPath, srtOutputPath);
+                    log.push(`📄 Subtitles saved separately: ${path.relative(this.workspaceRoot, srtOutputPath)}`);
+                } else {
+                    throw ffmpegError;
+                }
+            }
+
+            // Get output file size
+            let fileSizeStr = '';
+            try {
+                const stat = await fs.stat(targetPath);
+                const sizeMB = (stat.size / (1024 * 1024)).toFixed(2);
+                fileSizeStr = ` (${sizeMB} MB)`;
+            } catch {}
+
+            const totalDuration = durations.reduce((a, b) => a + b, 0);
+
+            // 9. Cleanup temp files
+            await this.cleanupTempDir(tempDir);
+
+            log.push(`\n✅ **Video generated successfully!**`);
+            log.push(`📁 Output: \`${outputPath}\`${fileSizeStr}`);
+            log.push(`⏱️ Duration: ${totalDuration.toFixed(1)} seconds`);
+            log.push(`🎙️ Voice: ${validVoice.friendlyName}`);
+            log.push(`📐 Resolution: ${options.resolution}`);
+
+            return log.join('\n');
+        } catch (error: any) {
+            // Cleanup on error
+            await this.cleanupTempDir(tempDir);
+            if (error.message === 'Cancelled by user') {
+                return log.join('\n') + '\n\n⚠️ Video generation cancelled by user.';
+            }
+            return log.join('\n') + `\n\n❌ Video generation failed: ${error.message}`;
+        }
+    }
+
+    private async generateSolidBackground(outputPath: string, width: number, height: number, ffmpegCmd: string): Promise<void> {
+        // Use FFmpeg to create a solid dark gradient background
+        await execAsync(
+            `${ffmpegCmd} -y -f lavfi -i "color=c=0x1a1a2e:s=${width}x${height}:d=1" -frames:v 1 "${outputPath}"`
+        );
+    }
+
+    private async cleanupTempDir(tempDir: string): Promise<void> {
+        try {
+            await fs.rm(tempDir, { recursive: true, force: true });
+        } catch {
+            // Ignore cleanup errors
+        }
+    }
+
+    // ======================== END VIDEO GENERATION ========================
 
     private async browserSubagent(task: string, url: string, signal?: AbortSignal): Promise<string> {
         let log = `[browserSubagent] Starting subagent task: "${task}" at URL: ${url}\n`;
