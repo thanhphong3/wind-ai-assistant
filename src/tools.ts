@@ -77,7 +77,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'readFile',
-        description: 'Reads the content of a file in the workspace, optionally between specific line ranges.',
+        description: 'Reads the content of a file in the workspace, optionally between specific line ranges. IMPORTANT: Always read a file before editing it to ensure you have the current content. For large files (>500 lines), use startLine/endLine to read specific sections.',
         parameters: {
             type: 'object',
             properties: {
@@ -99,7 +99,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'writeFile',
-        description: 'Creates a new file or overwrites an existing file in the workspace with new content.',
+        description: 'Creates a new file or FULLY overwrites an existing file in the workspace. Use this ONLY for creating new files or when the entire file needs to be rewritten. For surgical edits to existing files, prefer replaceFileContent or multiReplaceFileContent instead.',
         parameters: {
             type: 'object',
             properties: {
@@ -109,7 +109,7 @@ export const TOOLS: ToolDefinition[] = [
                 },
                 content: {
                     type: 'string',
-                    description: 'The content to write to the file.'
+                    description: 'The complete content to write to the file.'
                 }
             },
             required: ['relativeFilePath', 'content']
@@ -171,7 +171,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'replaceFileContent',
-        description: 'Replaces a specific contiguous block of text inside a file with new content.',
+        description: 'Replaces a specific contiguous block of text inside a file with new content. The targetContent must match EXACTLY (including whitespace and line endings) and must be unique within the file. Include 2-3 lines of surrounding context to ensure uniqueness. Always read the file first to get the exact current content.',
         parameters: {
             type: 'object',
             properties: {
@@ -181,11 +181,11 @@ export const TOOLS: ToolDefinition[] = [
                 },
                 targetContent: {
                     type: 'string',
-                    description: 'The exact block of text to search for and replace.'
+                    description: 'The exact block of text to search for and replace. Must be unique in the file. Include surrounding context lines for uniqueness.'
                 },
                 replacementContent: {
                     type: 'string',
-                    description: 'The new content to replace the targetContent with.'
+                    description: 'The new content to replace the targetContent with. Must be a complete drop-in replacement.'
                 }
             },
             required: ['relativeFilePath', 'targetContent', 'replacementContent']
@@ -193,7 +193,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'multiReplaceFileContent',
-        description: 'Replaces multiple non-contiguous blocks of text in a single file.',
+        description: 'Replaces multiple non-contiguous blocks of text in a single file. Use this when you need to edit several different sections of the same file in one operation. Each targetContent must be unique within the file.',
         parameters: {
             type: 'object',
             properties: {
@@ -253,13 +253,13 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'grepSearch',
-        description: 'Search for a regex pattern within files in a directory using ripgrep or fallback search.',
+        description: 'Search for a text pattern or regex within files in a directory. Preferred over running shell grep/find commands. Useful for finding function definitions, variable usages, imports, error messages, or any text pattern in the codebase.',
         parameters: {
             type: 'object',
             properties: {
                 query: {
                     type: 'string',
-                    description: 'The regular expression or string to search for.'
+                    description: 'The text or regex pattern to search for (e.g. "function myFunc", "import.*axios", "TODO:").'
                 },
                 dirPath: {
                     type: 'string',
@@ -267,7 +267,7 @@ export const TOOLS: ToolDefinition[] = [
                 },
                 isRegex: {
                     type: 'boolean',
-                    description: 'Whether the query should be treated as a regular expression. Defaults to false.'
+                    description: 'Whether the query should be treated as a regular expression. Defaults to false (literal search).'
                 }
             },
             required: ['query', 'dirPath']
@@ -1269,10 +1269,12 @@ export class ToolsManager {
             const applied = await vscode.workspace.applyEdit(edit);
             if (applied) {
                 await doc.save();
-                return `File "${relativeFilePath}" written successfully.`;
+                const lineCount = content.split('\n').length;
+                return `File "${relativeFilePath}" written successfully (${lineCount} lines).`;
             } else {
                 await fs.writeFile(targetPath, content, 'utf8');
-                return `File "${relativeFilePath}" written successfully (fallback).`;
+                const lineCount = content.split('\n').length;
+                return `File "${relativeFilePath}" written successfully (${lineCount} lines, fallback).`;
             }
         } catch (error: any) {
             return `Error writing file "${relativeFilePath}": ${error.message}`;
@@ -1664,7 +1666,25 @@ export class ToolsManager {
                     await doc.save();
                     return `File "${relativeFilePath}" updated successfully (already applied).`;
                 }
-                return `Error: targetContent not found in "${relativeFilePath}". Please ensure the targetContent matches exactly (including whitespaces and newlines).`;
+                // Fuzzy matching: find closest lines to help the LLM self-correct
+                const targetLines = normalizedTarget.split(/\r?\n/);
+                const firstTargetLine = targetLines[0].trim();
+                let errorMsg = `Error: targetContent not found in "${relativeFilePath}". Please ensure the targetContent matches exactly (including whitespaces and newlines).`;
+                if (firstTargetLine.length >= 10) {
+                    const contentLines = content.split(/\r?\n/);
+                    const searchFragment = firstTargetLine.substring(0, Math.min(40, firstTargetLine.length));
+                    const closestLines: string[] = [];
+                    for (let li = 0; li < contentLines.length && closestLines.length < 3; li++) {
+                        if (contentLines[li].includes(searchFragment)) {
+                            closestLines.push(`  Line ${li + 1}: ${contentLines[li].trimEnd().substring(0, 120)}`);
+                        }
+                    }
+                    if (closestLines.length > 0) {
+                        errorMsg += `\nClosest matching lines in file:\n${closestLines.join('\n')}`;
+                        errorMsg += `\nHint: Re-read the file with readFile to get the exact current content before retrying.`;
+                    }
+                }
+                return errorMsg;
             }
             if (occurrences > 1) {
                 return `Error: targetContent found multiple times (${occurrences} occurrences) in "${relativeFilePath}". Please provide a larger block of text to uniquely identify the section to replace.`;
@@ -1680,7 +1700,9 @@ export class ToolsManager {
             const applied = await vscode.workspace.applyEdit(edit);
             if (applied) {
                 await doc.save();
-                return `File "${relativeFilePath}" updated successfully.`;
+                const newDoc = await vscode.workspace.openTextDocument(fileUri);
+                const totalLines = newDoc.lineCount;
+                return `File "${relativeFilePath}" updated successfully (${totalLines} lines total).`;
             } else {
                 const newContent = content.replace(normalizedTarget, normalizedReplacement);
                 await fs.writeFile(targetPath, newContent, 'utf8');
@@ -1736,7 +1758,9 @@ export class ToolsManager {
             const applied = await vscode.workspace.applyEdit(edit);
             if (applied) {
                 await doc.save();
-                return `File "${relativeFilePath}" updated successfully with ${replacements.length} replacements.`;
+                const newDoc = await vscode.workspace.openTextDocument(fileUri);
+                const totalLines = newDoc.lineCount;
+                return `File "${relativeFilePath}" updated successfully with ${replacements.length} replacements (${totalLines} lines total).`;
             } else {
                 await fs.writeFile(targetPath, content, 'utf8');
                 return `File "${relativeFilePath}" updated successfully with ${replacements.length} replacements (fallback).`;

@@ -3,6 +3,41 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { TOOLS, ToolsManager } from '../tools';
 
+/**
+ * Lightweight project type detection for workspace awareness.
+ * Reads only file existence (no file content), so it is very fast.
+ */
+async function detectProjectContext(workspaceRoot: string): Promise<string> {
+    const checks: { file: string; label: string }[] = [
+        { file: 'package.json', label: 'Node.js/JavaScript' },
+        { file: 'tsconfig.json', label: 'TypeScript' },
+        { file: 'Cargo.toml', label: 'Rust' },
+        { file: 'go.mod', label: 'Go' },
+        { file: 'requirements.txt', label: 'Python' },
+        { file: 'pyproject.toml', label: 'Python' },
+        { file: 'pom.xml', label: 'Java/Maven' },
+        { file: 'build.gradle', label: 'Java/Gradle' },
+        { file: 'Gemfile', label: 'Ruby' },
+        { file: 'composer.json', label: 'PHP' },
+        { file: '.csproj', label: 'C#/.NET' },
+        { file: 'CMakeLists.txt', label: 'C/C++' },
+        { file: 'pubspec.yaml', label: 'Flutter/Dart' },
+    ];
+    const detected: string[] = [];
+    try {
+        const rootEntries = await fs.promises.readdir(workspaceRoot).catch(() => [] as string[]);
+        const entrySet = new Set(rootEntries);
+        for (const c of checks) {
+            if (entrySet.has(c.file) || rootEntries.some(e => e.endsWith(c.file))) {
+                detected.push(c.label);
+            }
+        }
+    } catch { /* ignore */ }
+    if (detected.length === 0) return '';
+    // Deduplicate (e.g. Python may match twice)
+    return `\nDetected project type(s): ${[...new Set(detected)].join(', ')}`;
+}
+
 export interface SystemPromptOptions {
     workspaceRoot: string;
     model: string;
@@ -39,7 +74,10 @@ async function loadKnowledgeItems(workspaceRoot: string): Promise<string> {
 
 export async function getSystemPrompt(options: SystemPromptOptions): Promise<string> {
     const { workspaceRoot, model, toolsManager, fastAction, mode, forceNonTool } = options;
-    const kiContext = await loadKnowledgeItems(workspaceRoot);
+    const [kiContext, projectContext] = await Promise.all([
+        loadKnowledgeItems(workspaceRoot),
+        detectProjectContext(workspaceRoot)
+    ]);
     const modelLower = model.toLowerCase();
     const isNonToolModel = forceNonTool || modelLower.includes('deepseek') || modelLower.includes('gemma') || modelLower.includes('r1');
 
@@ -126,8 +164,8 @@ Rules:
 4. Keep your reasoning clear and responses concise.`;
         }
     } else if (mode === 'auto') {
-        promptText = `You are Wind Agent, an autonomous software engineering assistant.
-Workspace: ${workspaceRoot}
+        promptText = `You are Wind Agent, an autonomous, expert-level software engineering assistant.
+Workspace: ${workspaceRoot}${projectContext}
 
 You are in AUTO Mode. You must exercise judgment on whether the user's request warrants an implementation plan before taking action.
 
@@ -158,7 +196,7 @@ Rules:
 
 Tool Guidelines:
 - listDir: list directories without recursive clutter.
-- readFile: specify startLine and endLine for large files.
+- readFile: specify startLine and endLine for large files. ALWAYS read a file before editing it.
 - grepSearch: search for regular expression patterns or text within files in a directory. Use this instead of running shell search commands (like grep, find) in the terminal.
 - File edits: use replaceFileContent (single edit) or multiReplaceFileContent (multiple edits) with unique targetContent. Use writeFile ONLY for new or fully rewritten files.
 - searchWeb: search for libraries, docs, or errors.
@@ -168,8 +206,8 @@ Tool Guidelines:
 - saveKnowledgeItem: Use this proactively to save any important setup, architectural rules, or context you learn about the project.
 - If 'implementation_plan.md' or 'task.md' exists, read/reference them to guide your work.`;
     } else if (mode === 'goal') {
-        promptText = `You are Wind Agent, an autonomous software engineering assistant running in GOAL mode.
-Workspace: ${workspaceRoot}
+        promptText = `You are Wind Agent, an autonomous, expert-level software engineering assistant running in GOAL mode.
+Workspace: ${workspaceRoot}${projectContext}
 
 You are executing a high-level, long-running goal. You have a larger budget of reasoning steps (up to 100 loops) to complete the task thoroughly.
 Your focus is to autonomously achieve the goal, perform rigorous testing and self-verification, prevent bugs, and iteratively refine the solution until it is completely correct and robust. Do not stop until you are confident the goal is fully achieved.
@@ -194,8 +232,8 @@ Rules:
 2. Rely only on read-only tools to gain context.
 3. Keep responses structured, professional, and clear.`;
     } else {
-        promptText = `You are Wind Agent, an autonomous software engineering assistant.
-Workspace: ${workspaceRoot}
+        promptText = `You are Wind Agent, an autonomous, expert-level software engineering assistant.
+Workspace: ${workspaceRoot}${projectContext}
 
 Rules:
 1. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
@@ -205,7 +243,7 @@ Rules:
 
 Tool Guidelines:
 - listDir: list directories without recursive clutter.
-- readFile: specify startLine and endLine for large files.
+- readFile: specify startLine and endLine for large files. ALWAYS read a file before editing it.
 - grepSearch: search for regular expression patterns or text within files in a directory. Use this instead of running shell search commands (like grep, find) in the terminal.
 - File edits: use replaceFileContent (single edit) or multiReplaceFileContent (multiple edits) with unique targetContent. Use writeFile ONLY for new or fully rewritten files.
 - searchWeb: search for libraries, docs, or errors.
@@ -245,7 +283,31 @@ You must format your text responses to be highly visual, structured, and premium
 - Alerts & Notes: Use blockquotes (> [!NOTE] or > [!WARNING]) to highlight critical information, tips, or warnings.
 - Emphasis: Use bold text for emphasis, headers, or important keywords.
 - Code & Files: Use inline code (\`\`) for file names, paths, or variables. Use code blocks (\`\`\`) with appropriate syntax highlighting for code snippets.
-- Structure: Organize your output logically with clear headings. Avoid dense paragraphs; prefer bulleted lists or concise, scannable structures.`;
+- Structure: Organize your output logically with clear headings. Avoid dense paragraphs; prefer bulleted lists or concise, scannable structures.
+
+[THINKING PROTOCOL]
+Before taking any action on a non-trivial task, follow this structured approach:
+1. UNDERSTAND: Fully comprehend what the user is asking. Identify requirements, constraints, and edge cases.
+2. INVESTIGATE: Read relevant files and gather context BEFORE making any changes. Never edit a file you haven't read.
+3. PLAN: Outline your approach mentally. For multi-file changes, determine the order of operations.
+4. EXECUTE: Make precise, minimal changes using the most appropriate tool. Prefer surgical edits over full rewrites.
+5. VERIFY: After changes, verify correctness — re-read modified sections, run build/lint/test commands if applicable.
+
+[CODE EDITING BEST PRACTICES]
+- ALWAYS read the target file (or relevant section) with readFile BEFORE editing it. Blind edits cause errors.
+- Use replaceFileContent for surgical edits. Include enough surrounding context in targetContent to ensure uniqueness (3-5 lines of context around the change).
+- Use multiReplaceFileContent when you need to change multiple non-contiguous sections of the same file in one operation.
+- Use writeFile ONLY for creating new files or when the entire file needs to be rewritten.
+- If replaceFileContent fails with "not found", the file content may have changed. Re-read the file and retry with the current content.
+- Prefer multiple small, precise edits over one large rewrite to minimize risk.
+- After editing, verify the change by reading back the modified section if the change is complex or critical.
+- Preserve existing code style, indentation, and conventions. Do not reformat unrelated code.
+- When fixing bugs, understand the root cause before applying a fix. Do not apply band-aid solutions.
+
+[SELF-CORRECTION]
+- If a tool call fails, analyze the error message carefully before retrying. Adjust your approach based on the error.
+- If you realize you made a mistake in a previous edit, fix it immediately rather than continuing with broken code.
+- When uncertain about the impact of a change, read surrounding code to understand dependencies and side effects.`;
     }
 
     if (fastAction && mode !== 'plan') {

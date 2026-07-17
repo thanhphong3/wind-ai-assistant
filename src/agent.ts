@@ -494,6 +494,17 @@ ${userQuery}`;
                         toolResult = `Error executing tool: ${error.message}`;
                         success = false;
                     }
+
+                    // Enrich error messages with actionable recovery hints
+                    if (!success) {
+                        if ((toolName === 'replaceFileContent' || toolName === 'multiReplaceFileContent') && toolResult.includes('not found')) {
+                            toolResult += '\n[Hint: The file content may have changed since you last read it. Use readFile to get the current content, then retry with the exact text from the file.]';
+                        } else if (toolName === 'writeFile' && toolResult.includes('EACCES')) {
+                            toolResult += '\n[Hint: Permission denied. Check if the file path is correct and the file is not read-only.]';
+                        } else if (toolName === 'runCommand' && toolResult.includes('not recognized')) {
+                            toolResult += '\n[Hint: The command was not found. On Windows, use PowerShell-compatible commands. Avoid Unix-only commands like grep, cat, ls.]';
+                        }
+                    }
                 } else {
                     toolResult = `Tool execution was rejected by the user.`;
                     success = false;
