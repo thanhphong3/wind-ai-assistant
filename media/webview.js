@@ -31,14 +31,8 @@
             button.textContent = 'Code';
             
             const codeElement = pre.querySelector('code');
-            const escapedCode = codeElement.innerHTML;
-            const unescapedCode = escapedCode
-                .replace(/&amp;/g, '&')
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/&quot;/g, '"')
-                .replace(/&#039;/g, "'");
-                
+            const codeText = codeElement.textContent;
+                 
             const iframe = document.createElement('iframe');
             iframe.className = 'html-preview-iframe';
             iframe.sandbox = 'allow-scripts';
@@ -46,7 +40,7 @@
             previewWrapper.appendChild(iframe);
             const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
             iframeDoc.open();
-            iframeDoc.write(unescapedCode);
+            iframeDoc.write(codeText);
             iframeDoc.close();
         }
     };
@@ -58,25 +52,17 @@
         const codeElement = pre.querySelector('code');
         if (!codeElement) return;
         
-        const escapedCode = codeElement.innerHTML;
-        const unescapedCode = escapedCode
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#039;/g, "'");
+        const codeText = codeElement.textContent;
             
-        navigator.clipboard.writeText(unescapedCode).then(() => {
-            const originalText = button.textContent;
-            button.textContent = 'Copied!';
-            button.style.borderColor = 'var(--accent-blue)';
-            setTimeout(() => {
-                button.textContent = originalText;
-                button.style.borderColor = '';
-            }, 2000);
-        }).catch(err => {
-            console.error('Failed to copy text:', err);
-        });
+        vscode.postMessage({ type: 'copyText', text: codeText });
+
+        const originalText = button.textContent;
+        button.textContent = 'Copied!';
+        button.style.borderColor = 'var(--accent-blue)';
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.style.borderColor = '';
+        }, 2000);
     };
 
     const chatContainer = document.getElementById('chat-container');
@@ -88,6 +74,28 @@
         hideContextMenu();
     });
     chatContainer.addEventListener('click', (e) => {
+        const previewBtn = e.target.closest('.preview-toggle-btn');
+        if (previewBtn) {
+            e.stopPropagation();
+            window.toggleHtmlPreview(previewBtn);
+            return;
+        }
+
+        const copyBtn = e.target.closest('.copy-btn');
+        if (copyBtn) {
+            e.stopPropagation();
+            window.copyCodeBlock(copyBtn);
+            return;
+        }
+
+        const carouselBtn = e.target.closest('.carousel-btn');
+        if (carouselBtn) {
+            e.stopPropagation();
+            const direction = carouselBtn.classList.contains('prev') ? -1 : 1;
+            window.moveCarousel(carouselBtn, direction);
+            return;
+        }
+
         const fileLink = e.target.closest('.file-link');
         if (fileLink) {
             const filePath = fileLink.getAttribute('data-path');

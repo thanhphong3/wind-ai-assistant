@@ -77,7 +77,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'readFile',
-        description: 'Reads the content of a file in the workspace, optionally between specific line ranges. IMPORTANT: Always read a file before editing it to ensure you have the current content. For large files (>500 lines), use startLine/endLine to read specific sections.',
+        description: 'Reads the content of a file in the workspace, optionally between specific line ranges. Preferred for gaining context. ALWAYS read the file content BEFORE editing it with replaceFileContent/multiReplaceFileContent. For large files (>500 lines), specify startLine and endLine to conserve context token window.',
         parameters: {
             type: 'object',
             properties: {
@@ -99,7 +99,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'writeFile',
-        description: 'Creates a new file or FULLY overwrites an existing file in the workspace. Use this ONLY for creating new files or when the entire file needs to be rewritten. For surgical edits to existing files, prefer replaceFileContent or multiReplaceFileContent instead.',
+        description: 'Creates a brand new file or completely replaces the contents of an existing file in the workspace. WARNING: Overwrites everything in the target file. Use this ONLY for creating new files or when a complete rewrite is required. For surgical edits to existing files, ALWAYS prefer replaceFileContent or multiReplaceFileContent instead.',
         parameters: {
             type: 'object',
             properties: {
@@ -117,7 +117,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'runCommand',
-        description: 'Executes a command line instruction in the terminal in the workspace root.',
+        description: 'Executes a command line instruction in the terminal in the workspace root. IMPORTANT: Avoid Unix-only commands (like grep, cat, ls, rm, cp, mv) if the environment is Windows. Instead, use grepSearch tool for grep, readFile for cat, listDir for ls. Set runInBackground to true for long-running processes like servers or build watchers.',
         parameters: {
             type: 'object',
             properties: {
@@ -171,7 +171,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'replaceFileContent',
-        description: 'Replaces a specific contiguous block of text inside a file with new content. The targetContent must match EXACTLY (including whitespace and line endings) and must be unique within the file. Include 2-3 lines of surrounding context to ensure uniqueness. Always read the file first to get the exact current content.',
+        description: 'Replaces a specific contiguous block of text inside a file with new content. The targetContent must match EXACTLY (including spaces, indentation, tabs, and newlines) and must be unique within the file. Include 3-5 lines of surrounding context to ensure uniqueness. ALWAYS read the file first using readFile before attempting to edit it.',
         parameters: {
             type: 'object',
             properties: {
@@ -181,7 +181,7 @@ export const TOOLS: ToolDefinition[] = [
                 },
                 targetContent: {
                     type: 'string',
-                    description: 'The exact block of text to search for and replace. Must be unique in the file. Include surrounding context lines for uniqueness.'
+                    description: 'The exact block of text to search for and replace. Must match the file content exactly and be unique. Include surrounding context lines.'
                 },
                 replacementContent: {
                     type: 'string',
@@ -193,7 +193,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'multiReplaceFileContent',
-        description: 'Replaces multiple non-contiguous blocks of text in a single file. Use this when you need to edit several different sections of the same file in one operation. Each targetContent must be unique within the file.',
+        description: 'Replaces multiple non-contiguous blocks of text in a single file. Use this when you need to edit several different, separate sections of the same file in one operation. Each targetContent must match EXACTLY and be unique. Always read the file first before editing.',
         parameters: {
             type: 'object',
             properties: {
@@ -209,7 +209,7 @@ export const TOOLS: ToolDefinition[] = [
                         properties: {
                             targetContent: {
                                 type: 'string',
-                                description: 'The exact block of text to search for and replace.'
+                                description: 'The exact block of text to search for and replace. Must match the file content exactly.'
                             },
                             replacementContent: {
                                 type: 'string',
@@ -253,7 +253,7 @@ export const TOOLS: ToolDefinition[] = [
     },
     {
         name: 'grepSearch',
-        description: 'Search for a text pattern or regex within files in a directory. Preferred over running shell grep/find commands. Useful for finding function definitions, variable usages, imports, error messages, or any text pattern in the codebase.',
+        description: 'Searches for a text pattern or regex within files in a directory. Highly preferred over running shell grep/find/ack commands in the terminal as it works natively on all platforms including Windows. Use this to locate function definitions, variable usages, imports, or search terms.',
         parameters: {
             type: 'object',
             properties: {

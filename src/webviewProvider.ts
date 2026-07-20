@@ -762,6 +762,11 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                         console.error('Failed to dispose ToolsManager on clear:', err);
                     });
                     break;
+                case 'copyText':
+                    if (data.text) {
+                        await vscode.env.clipboard.writeText(data.text);
+                    }
+                    break;
                 case 'openFile': {
                     const workspaceFolders = vscode.workspace.workspaceFolders;
                     if (workspaceFolders && workspaceFolders.length > 0) {

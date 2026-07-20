@@ -3,6 +3,14 @@ import { StringDecoder } from 'string_decoder';
 import { TOOLS, ToolsManager } from './tools';
 import { getSystemPrompt } from './agent/systemPrompt';
 
+// Safely require vscode if running in Extension Host, to enable active editor context awareness
+let vscode: any;
+try {
+    vscode = require('vscode');
+} catch (e) {
+    // Ignore if not in VS Code context
+}
+
 export interface AgentCallbacks {
     onLog: (text: string) => void;
     onStreamChunk?: (text: string) => void;
@@ -207,6 +215,32 @@ ${userQuery}`;
             queryText = userQuery;
         } else {
             queryText = userQuery;
+        }
+
+        // Active Editor Context Enrichment: if vscode is active, enrich query with open file/selection details to improve reasoning
+        let activeEditorContext = '';
+        try {
+            if (vscode && vscode.window && vscode.window.activeTextEditor) {
+                const editor = vscode.window.activeTextEditor;
+                const doc = editor.document;
+                if (doc && doc.uri) {
+                    const relativePath = vscode.workspace.asRelativePath(doc.uri);
+                    activeEditorContext += `\n\n[Active File Context]\nActive editor file: \`${relativePath}\``;
+                    const selection = editor.selection;
+                    if (selection && !selection.isEmpty) {
+                        const selectedText = doc.getText(selection);
+                        if (selectedText) {
+                            activeEditorContext += `\nSelected code at lines ${selection.start.line + 1}-${selection.end.line + 1}:\n\`\`\`\n${selectedText}\n\`\`\``;
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            // Ignore context retrieval errors to prevent crashing the run
+        }
+        
+        if (activeEditorContext) {
+            queryText += activeEditorContext;
         }
 
         // Add user query to history
@@ -497,12 +531,22 @@ ${userQuery}`;
 
                     // Enrich error messages with actionable recovery hints
                     if (!success) {
-                        if ((toolName === 'replaceFileContent' || toolName === 'multiReplaceFileContent') && toolResult.includes('not found')) {
-                            toolResult += '\n[Hint: The file content may have changed since you last read it. Use readFile to get the current content, then retry with the exact text from the file.]';
+                        if (toolName === 'readFile' && (toolResult.includes('ENOENT') || toolResult.includes('does not exist'))) {
+                            toolResult += '\n[Hint: The file does not exist. Use listDir or grepSearch to check the exact file path and directory structure.]';
+                        } else if ((toolName === 'replaceFileContent' || toolName === 'multiReplaceFileContent') && toolResult.includes('not found')) {
+                            toolResult += '\n[Hint: The target text to replace was not found. The file content may have changed. ALWAYS read the file first to get the exact current content (including whitespaces/indentation), then retry with unique context lines.]';
+                        } else if ((toolName === 'replaceFileContent' || toolName === 'multiReplaceFileContent') && toolResult.includes('multiple matches')) {
+                            toolResult += '\n[Hint: The target content matches multiple lines. Please include 3-5 lines of surrounding context around the target text to make it unique.]';
                         } else if (toolName === 'writeFile' && toolResult.includes('EACCES')) {
-                            toolResult += '\n[Hint: Permission denied. Check if the file path is correct and the file is not read-only.]';
-                        } else if (toolName === 'runCommand' && toolResult.includes('not recognized')) {
-                            toolResult += '\n[Hint: The command was not found. On Windows, use PowerShell-compatible commands. Avoid Unix-only commands like grep, cat, ls.]';
+                            toolResult += '\n[Hint: Permission denied. Check if the file path is correct, not write-protected, and you have write permissions.]';
+                        } else if ((toolName === 'runCommand' || toolName === 'runTerminalCommand') && (toolResult.includes('not recognized') || toolResult.includes('not found') || toolResult.includes('ENOENT'))) {
+                            toolResult += '\n[Hint: The command or executable was not found. In Windows environments, Unix commands like grep, cat, ls, rm, cp, mv are not natively available. Use grepSearch tool instead of grep, readFile instead of cat, and listDir instead of ls. For other operations, use Windows-equivalent commands or check your PATH/workspace settings.]';
+                        } else if ((toolName === 'runCommand' || toolName === 'runTerminalCommand')) {
+                            toolResult += '\n[Hint: The command failed. Analyze the compiler or test error output closely, identify the file and line causing the failure, read the file around those lines, and fix the syntax or logic error.]';
+                        } else if (toolName.startsWith('browser')) {
+                            toolResult += '\n[Hint: Browser automation failed. This may happen if the page didn\'t load, a selector was invalid, or Chrome failed to start. Verify the URL is correct and active, or take a screenshot to inspect visual layout.]';
+                        } else if (toolName === 'grepSearch' && (toolResult.includes('empty') || toolResult.includes('no matches') || toolResult.includes('not found'))) {
+                            toolResult += '\n[Hint: Grep search returned no results. Try a simpler or more general literal keyword query without regular expressions, or verify that you are searching in the correct directory relative to workspace root.]';
                         }
                     }
                 } else {
@@ -611,7 +655,7 @@ ${userQuery}`;
 
         // Character-based context window pruning (safeguard against token window overflow)
         // Computed once before the retry loop since messages don't change between retries.
-        const MAX_RETAINED_CHARS = 240000; // ~60,000 tokens
+        const MAX_RETAINED_CHARS = 320000; // ~80,000 tokens
         const totalChars = this.messages.reduce((sum, msg) => {
             let contentStr = '';
             if (typeof msg.content === 'string') {
@@ -647,12 +691,22 @@ ${userQuery}`;
             }
 
             if (trimStart > 1) {
+                const prunedMessages = this.messages.slice(1, trimStart);
+                const summaryMarkdown = summarizePrunedMessages(prunedMessages);
+                
                 if (this.messages[trimStart]?.role === 'user') {
-                    this.messages = [systemPrompt, ...this.messages.slice(trimStart)];
+                    const originalContent = this.messages[trimStart].content;
+                    const updatedMsg = {
+                        ...this.messages[trimStart],
+                        content: typeof originalContent === 'string'
+                            ? summaryMarkdown + originalContent
+                            : originalContent
+                    };
+                    this.messages = [systemPrompt, updatedMsg, ...this.messages.slice(trimStart + 1)];
                 } else {
                     const placeholderUser = {
                         role: 'user',
-                        content: 'Continuing task execution...'
+                        content: summaryMarkdown + 'Continuing task execution...'
                     };
                     this.messages = [systemPrompt, placeholderUser, ...this.messages.slice(trimStart)];
                 }
@@ -1293,6 +1347,10 @@ ${userQuery}`;
                         this.callbacks.onLog(`[System] Model "${currentModel}" with key[${currentKeyIdx}] encountered an error: ${errorDetails}. Switching to next API key[${nextKeyIdx}]...`);
                     }
 
+                    const backoffMs = Math.min(1000 * Math.pow(2, attempt), 8000);
+                    this.callbacks.onLog(`[System] Waiting ${backoffMs}ms before next retry (exponential backoff)...`);
+                    await new Promise(r => setTimeout(r, backoffMs));
+
                     if (this.callbacks.onModelSwitch) {
                         this.callbacks.onModelSwitch(nextModel, nextKeyIdx);
                     }
@@ -1873,4 +1931,54 @@ function detectRepetitiveLoop(text: string): boolean {
         }
     }
     return false;
+}
+
+function summarizePrunedMessages(pruned: any[]): string {
+    if (!pruned || pruned.length === 0) return '';
+    let userCount = 0;
+    let assistantCount = 0;
+    let toolCount = 0;
+    const toolsUsed = new Map<string, number>();
+    const filesRead = new Set<string>();
+    const filesWritten = new Set<string>();
+
+    for (const msg of pruned) {
+        if (msg.role === 'user') userCount++;
+        else if (msg.role === 'assistant') {
+            assistantCount++;
+            if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+                for (const tc of msg.tool_calls) {
+                    const name = tc.function?.name || tc.name || 'unknown_tool';
+                    toolsUsed.set(name, (toolsUsed.get(name) || 0) + 1);
+                    try {
+                        const args = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function?.arguments || {};
+                        if (args.relativeFilePath || args.targetFile || args.path) {
+                            const file = args.relativeFilePath || args.targetFile || args.path;
+                            if (name === 'readFile') filesRead.add(file);
+                            else if (name === 'writeFile' || name === 'replaceFileContent' || name === 'multiReplaceFileContent') {
+                                filesWritten.add(file);
+                            }
+                        }
+                    } catch { /* ignore */ }
+                }
+            }
+        } else if (msg.role === 'tool') {
+            toolCount++;
+        }
+    }
+
+    const toolsStr = Array.from(toolsUsed.entries())
+        .map(([name, count]) => `${name} (${count}x)`)
+        .join(', ');
+
+    const readStr = filesRead.size > 0 ? `\n- Files read: ${Array.from(filesRead).slice(0, 10).join(', ')}${filesRead.size > 10 ? '...' : ''}` : '';
+    const writeStr = filesWritten.size > 0 ? `\n- Files modified/created: ${Array.from(filesWritten).slice(0, 10).join(', ')}${filesWritten.size > 10 ? '...' : ''}` : '';
+
+    return `\n\n[SYSTEM INFO: Pruned Conversation History Summary]\n` +
+        `To fit the model's context window, some older messages have been summarized and pruned:\n` +
+        `- Pruned messages: ${pruned.length} (${userCount} User, ${assistantCount} Assistant, ${toolCount} Tool responses)\n` +
+        (toolsStr ? `- Executed tools: ${toolsStr}\n` : '') +
+        readStr +
+        writeStr +
+        `\n(Please continue the task based on the current active code state.)\n`;
 }
