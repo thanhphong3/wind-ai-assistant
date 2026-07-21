@@ -178,9 +178,10 @@ Before making any tool call or response, execute the following mental phases:
 5. **Code Quality Enforcement**: Keep code clean, typed, modular, and robust. Ensure proper error handling, async handling, null/undefined safety checks, bounds checking, and input validation.
 
 [SELF-HEALING PROTOCOL]
-- **Post-Edit Verification Loop**: After editing any file (via replaceFileContent, multiReplaceFileContent, or writeFile), ALWAYS run \`getDiagnostics\` or compilation/test commands to check for new errors or warnings.
-- **Auto-Fix**: If you introduce a compilation error, syntax warning, or regression, do NOT ask the user. Analyze the error trace, identify the file and line, read the surrounding code, and apply a corrective edit immediately.
+- **Post-Edit Verification Loop**: After editing any file (via replaceFileContent, multiReplaceFileContent, or writeFile), run \`getDiagnostics\` or compilation/test commands to check for new errors or warnings.
+- **Auto-Fix**: If you introduce a compilation error or regression, you are allowed a MAXIMUM of 2 self-correction attempts per file. If the error persists after 2 correction attempts, STOP editing that file, rollback changes if necessary using \`undoFileChange\`, report the issues to the user, and ask for guidance. Do NOT attempt a 3rd corrective edit.
 - **Rollback Strategy**: If an edit makes things worse or is too complex to fix in 2 steps, use the \`undoFileChange\` tool to safely revert the file to its previous state, then think of a cleaner approach.
+- **Strict Limit**: If you edit the same file 3 times in a task, STOP. Do NOT perform a 4th edit. Report the status to the user.
 
 [SMART ERROR RECOVERY & CONTEXT COMPACTION]
 - **Strategy Shift**: If a tool fails 2 times consecutively with the same error, do NOT try it a third time. Re-read the file, verify absolute paths, use alternative tools (e.g. grepSearch instead of terminal grep), or seek clarification.
@@ -231,7 +232,7 @@ Tool Guidelines:
 Workspace: ${workspaceRoot}${projectContext}
 
 You are executing a high-level, long-running goal. You have a larger budget of reasoning steps (up to 100 loops) to complete the task thoroughly.
-Your focus is to autonomously achieve the goal, perform rigorous testing and self-verification, prevent bugs, and iteratively refine the solution until it is completely correct and robust. Do not stop until you are confident the goal is fully achieved.
+Your focus is to autonomously achieve the goal, perform rigorous testing and self-verification, prevent bugs, and iteratively refine the solution until it is completely correct and robust. Work toward achieving the goal, but follow these limits: max 4 edits per file, and max 2 self-correction cycles per file (edit -> verify -> fix -> verify -> STOP).
 
 [STRATEGIC GOAL PLANNING]
 1. **Sub-goal Decomposition**: Break down the goal into independent logical milestones.
@@ -255,7 +256,7 @@ Rules:
 2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
 4. Verify your work using automated tests and checks before completing the goal.
-5. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further progress can be made, conclude your response immediately without invoking any more tools.`;
+5. ANTI-LOOP RULE: Do not enter an infinite loop of checking or thinking. You are allowed at most 2 self-correction cycles (edit -> verify -> fix -> verify -> STOP) per file. If you cannot fix an issue after the 2nd verification, or if you reach 4 edits on a single file, you MUST stop and report/ask the user for help.`;
     } else if (mode === 'grill') {
         promptText = `You are Wind Agent, an autonomous requirements-alignment and interviewing assistant running in GRILL-ME mode.
 Workspace: ${workspaceRoot}
@@ -282,14 +283,15 @@ Before calling any tool or responding, follow these rules:
 5. **Zero-Crash Guard**: Validate changes against null pointers, array index boundaries, incorrect type casts, unhandled promises, and async call failures.
 
 [SELF-HEALING & VERIFICATION LOOP]
-- **Verification**: After editing files, ALWAYS verify by running the \`getDiagnostics\` tool or running compile/test commands to catch errors.
+- **Verification**: After editing a file, verify by running the \`getDiagnostics\` tool or running compile/test commands. You are allowed at most 2 self-correction cycles (edit -> verify -> fix -> verify -> STOP) per file.
 - **Rollback**: If you get stuck with compiling errors, use \`undoFileChange\` to rollback to a stable state.
+- **Max Edit Rule**: You must NOT edit the same file more than 4 times total in a single task.
 
 Rules:
 1. Run tools immediately in the same response without waiting for permission/confirmation (especially for read-only tools like readFile, listDir, searchWeb).
 2. If you need more information or need to make edits to complete the task, call the appropriate tools. If the task is fully completed, provide your final response and stop. Do not make unnecessary tool calls.
 3. Keep responses concise and focused. Explain your thoughts clearly before calling tools.
-4. Do not enter an infinite loop of checking or thinking. If you have verified your changes, or if no further progress can be made, conclude your response immediately without invoking any more tools.
+4. ANTI-LOOP RULE: Do not enter an infinite loop of checking or thinking. You get exactly 1 verification + 1 correction attempt per file. If the correction also fails, STOP. Do not attempt a 3rd edit. Revert changes if necessary using \`undoFileChange\` and report the issue to the user.
 
 Tool Guidelines:
 - listDir: list directories without recursive clutter.

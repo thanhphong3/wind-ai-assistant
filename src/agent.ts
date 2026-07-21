@@ -267,6 +267,9 @@ ${userQuery}`;
         let loopCount = 0;
         const maxLoops = mode === 'goal' ? 100 : 50; // Safeguard against infinite tool loops
         const toolCallHistory: string[] = [];
+        let recoveryAttempts = 0;
+        const maxRecoveryAttempts = 3;
+        const fileEditCounts = new Map<string, number>();
 
         let accumulatedContent = '';
         let accumulatedToolCalls: any[] = [];
@@ -334,7 +337,12 @@ ${userQuery}`;
                     if (this.messages[0] && this.messages[0].role === 'system') {
                         this.messages[0].content = newPrompt;
                     }
-                    loopCount--; // don't count this failed attempt as a loop
+                    if (recoveryAttempts < maxRecoveryAttempts) {
+                        recoveryAttempts++;
+                        loopCount--; // don't count this failed attempt as a loop
+                    } else {
+                        throw new Error('Too many tool unsupported errors / recovery attempts.');
+                    }
                     continue;
                 } else {
                     throw err;
@@ -401,7 +409,13 @@ ${userQuery}`;
                 });
                 
                 isContinuation = true;
-                loopCount--; // don't count this recovery attempt as a loop
+                if (recoveryAttempts < maxRecoveryAttempts) {
+                    recoveryAttempts++;
+                    loopCount--; // don't count this recovery attempt as a loop
+                } else {
+                    this.callbacks.onLog('⚠️ System: Max recovery attempts reached. Stopping generation to prevent infinite loop.');
+                    throw new Error('Repetition loop recovery attempts limit reached.');
+                }
                 continue;
             }
 
@@ -481,6 +495,20 @@ ${userQuery}`;
 
                 const toolSignature = `${toolName}:${rawArgs.trim()}`;
                 
+                const MODIFYING_TOOLS = new Set(['writeFile', 'replaceFileContent', 'multiReplaceFileContent']);
+                if (MODIFYING_TOOLS.has(toolName)) {
+                    const filePath = toolArgs.relativeFilePath || toolArgs.filePath || toolArgs.path || toolArgs.targetFile || toolArgs.file || toolArgs.filename || '';
+                    if (filePath) {
+                        const editCount = (fileEditCounts.get(filePath) || 0) + 1;
+                        fileEditCounts.set(filePath, editCount);
+                        if (editCount > 5) {
+                            const warnMsg = `⚠️ Warning: Infinite loop prevented. The file "${filePath}" has been edited ${editCount} times. Stopping edits to this file.`;
+                            this.callbacks.onLog(warnMsg);
+                            return { earlyExit: true, message: warnMsg };
+                        }
+                    }
+                }
+                
                 // Check for consecutive identical calls (for any tool)
                 const len = toolCallHistory.length;
                 if (len >= 2 && toolCallHistory[len - 1] === toolSignature && toolCallHistory[len - 2] === toolSignature) {
@@ -490,7 +518,6 @@ ${userQuery}`;
                 }
 
                 // Check for overall identical calls of tools
-                const MODIFYING_TOOLS = new Set(['writeFile', 'replaceFileContent', 'multiReplaceFileContent']);
                 const limit = MODIFYING_TOOLS.has(toolName) ? 2 : 3;
                 const occurrences = toolCallHistory.filter(sig => sig === toolSignature).length;
                 if (occurrences >= limit) {
@@ -539,7 +566,7 @@ ${userQuery}`;
                                 await new Promise(resolve => setTimeout(resolve, 800));
                                 const diagnosticsResult = await this.toolsManager.executeTool('getDiagnostics', { relativeFilePath: filePathArg });
                                 if (diagnosticsResult && !diagnosticsResult.includes('No errors or warnings found')) {
-                                    toolResult += `\n\n[Post-Edit Verification - Compiler/Linter Diagnostics Warning]\n${diagnosticsResult}\n[Please check the diagnostics above. If they are related to your changes, apply a self-correcting edit to fix them immediately.]`;
+                                    toolResult += `\n\n[Post-Edit Verification - Compiler/Linter Diagnostics Info]\n${diagnosticsResult}\n[Review the diagnostics above. If any errors (not warnings) were DIRECTLY INTRODUCED by your edit, you may attempt ONE corrective edit. If the errors are pre-existing or unrelated, do NOT attempt to fix them. After one correction attempt, move on regardless of remaining diagnostics.]`;
                                 }
                             }
                         } catch (diagError) {
