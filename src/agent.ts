@@ -31,6 +31,7 @@ export class Agent {
     private abortController?: AbortController;
     public isCancelled = false;
     public fastAction = false;
+    private consecutiveToolFailures = new Map<string, { count: number; lastError: string }>();
 
     private _apiKey: string | string[] = '';
     private keys: string[] = [];
@@ -529,6 +530,23 @@ ${userQuery}`;
                         success = false;
                     }
 
+                    // Post-Edit Verification: check compiler/linter diagnostics for the modified file
+                    if (success && (toolName === 'writeFile' || toolName === 'replaceFileContent' || toolName === 'multiReplaceFileContent')) {
+                        try {
+                            const filePathArg = toolArgs.relativeFilePath || toolArgs.filePath || toolArgs.path || toolArgs.file || toolArgs.filename;
+                            if (filePathArg) {
+                                // Wait 800ms for VS Code compiler diagnostics to update in the background
+                                await new Promise(resolve => setTimeout(resolve, 800));
+                                const diagnosticsResult = await this.toolsManager.executeTool('getDiagnostics', { relativeFilePath: filePathArg });
+                                if (diagnosticsResult && !diagnosticsResult.includes('No errors or warnings found')) {
+                                    toolResult += `\n\n[Post-Edit Verification - Compiler/Linter Diagnostics Warning]\n${diagnosticsResult}\n[Please check the diagnostics above. If they are related to your changes, apply a self-correcting edit to fix them immediately.]`;
+                                }
+                            }
+                        } catch (diagError) {
+                            // Ignore errors to ensure agent loop does not crash
+                        }
+                    }
+
                     // Enrich error messages with actionable recovery hints
                     if (!success) {
                         if (toolName === 'readFile' && (toolResult.includes('ENOENT') || toolResult.includes('does not exist'))) {
@@ -548,6 +566,25 @@ ${userQuery}`;
                         } else if (toolName === 'grepSearch' && (toolResult.includes('empty') || toolResult.includes('no matches') || toolResult.includes('not found'))) {
                             toolResult += '\n[Hint: Grep search returned no results. Try a simpler or more general literal keyword query without regular expressions, or verify that you are searching in the correct directory relative to workspace root.]';
                         }
+                    }
+
+                    // Track consecutive tool failures to detect and prevent repeating bad strategies
+                    if (!success) {
+                        const currentFailure = this.consecutiveToolFailures.get(toolName) || { count: 0, lastError: '' };
+                        const errorSnippet = toolResult.substring(0, 100);
+                        if (currentFailure.count > 0 && currentFailure.lastError === errorSnippet) {
+                            currentFailure.count++;
+                        } else {
+                            currentFailure.count = 1;
+                            currentFailure.lastError = errorSnippet;
+                        }
+                        this.consecutiveToolFailures.set(toolName, currentFailure);
+
+                        if (currentFailure.count >= 2) {
+                            toolResult += `\n\n[System Recovery Alert: The tool "${toolName}" has failed ${currentFailure.count} times consecutively with the same error. Please CHANGE your strategy or input arguments. Do NOT repeat the exact same tool call. Consider reading the file/directory contents again, double checking file paths, or using the "undoFileChange" tool to revert your changes to a clean state.]`;
+                        }
+                    } else {
+                        this.consecutiveToolFailures.delete(toolName);
                     }
                 } else {
                     toolResult = `Tool execution was rejected by the user.`;
@@ -1941,10 +1978,25 @@ function summarizePrunedMessages(pruned: any[]): string {
     const toolsUsed = new Map<string, number>();
     const filesRead = new Set<string>();
     const filesWritten = new Set<string>();
+    const commandsRun = new Set<string>();
+    const userObjectives: string[] = [];
 
     for (const msg of pruned) {
-        if (msg.role === 'user') userCount++;
-        else if (msg.role === 'assistant') {
+        if (msg.role === 'user') {
+            userCount++;
+            let contentStr = '';
+            if (typeof msg.content === 'string') {
+                contentStr = msg.content;
+            } else if (Array.isArray(msg.content)) {
+                const textPart = msg.content.find((p: any) => p && p.type === 'text');
+                if (textPart) contentStr = textPart.text;
+            }
+            if (contentStr.trim()) {
+                const line = contentStr.split('\n')[0].trim();
+                const snippet = line.length > 80 ? line.substring(0, 80) + '...' : line;
+                userObjectives.push(snippet);
+            }
+        } else if (msg.role === 'assistant') {
             assistantCount++;
             if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
                 for (const tc of msg.tool_calls) {
@@ -1959,6 +2011,10 @@ function summarizePrunedMessages(pruned: any[]): string {
                                 filesWritten.add(file);
                             }
                         }
+                        if (name === 'runCommand' || name === 'runTerminalCommand') {
+                            const cmd = args.command || args.cmd;
+                            if (cmd) commandsRun.add(cmd);
+                        }
                     } catch { /* ignore */ }
                 }
             }
@@ -1971,14 +2027,20 @@ function summarizePrunedMessages(pruned: any[]): string {
         .map(([name, count]) => `${name} (${count}x)`)
         .join(', ');
 
+    const objectivesStr = userObjectives.length > 0
+        ? `\n- Objectives discussed:\n${userObjectives.slice(-5).map(o => `  * ${o}`).join('\n')}`
+        : '';
     const readStr = filesRead.size > 0 ? `\n- Files read: ${Array.from(filesRead).slice(0, 10).join(', ')}${filesRead.size > 10 ? '...' : ''}` : '';
     const writeStr = filesWritten.size > 0 ? `\n- Files modified/created: ${Array.from(filesWritten).slice(0, 10).join(', ')}${filesWritten.size > 10 ? '...' : ''}` : '';
+    const cmdStr = commandsRun.size > 0 ? `\n- Commands executed: ${Array.from(commandsRun).slice(0, 5).map(c => `\`${c}\``).join(', ')}${commandsRun.size > 5 ? '...' : ''}` : '';
 
     return `\n\n[SYSTEM INFO: Pruned Conversation History Summary]\n` +
         `To fit the model's context window, some older messages have been summarized and pruned:\n` +
         `- Pruned messages: ${pruned.length} (${userCount} User, ${assistantCount} Assistant, ${toolCount} Tool responses)\n` +
         (toolsStr ? `- Executed tools: ${toolsStr}\n` : '') +
+        objectivesStr +
         readStr +
         writeStr +
+        cmdStr +
         `\n(Please continue the task based on the current active code state.)\n`;
 }

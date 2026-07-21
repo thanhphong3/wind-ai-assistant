@@ -564,6 +564,34 @@ export const TOOLS: ToolDefinition[] = [
             },
             required: ['question', 'options']
         }
+    },
+    {
+        name: 'getDiagnostics',
+        description: 'Retrieves compilation, syntax, linting errors or warnings in the workspace or for a specific file. Run this after edits to verify correctness.',
+        parameters: {
+            type: 'object',
+            properties: {
+                relativeFilePath: {
+                    type: 'string',
+                    description: 'Optional. Filter diagnostics for this specific file path relative to workspace root.'
+                }
+            },
+            required: []
+        }
+    },
+    {
+        name: 'undoFileChange',
+        description: 'Reverts the last change made to a specific file. Replaces the file content with the checkpoint state recorded right before the last write/replace action.',
+        parameters: {
+            type: 'object',
+            properties: {
+                relativeFilePath: {
+                    type: 'string',
+                    description: 'The path of the file to revert, relative to workspace root.'
+                }
+            },
+            required: ['relativeFilePath']
+        }
     }
 ];
 
@@ -831,6 +859,56 @@ export class ToolsManager {
         this.model = model;
     }
 
+    private memoryCheckpoints = new Map<string, string[]>();
+
+    private async saveCheckpoint(relativeFilePath: string): Promise<void> {
+        try {
+            const targetPath = this.resolvePath(relativeFilePath);
+            let content = '';
+            try {
+                content = await fs.readFile(targetPath, 'utf8');
+            } catch {
+                // File does not exist yet (or is new)
+                content = '';
+            }
+            if (!this.memoryCheckpoints.has(relativeFilePath)) {
+                this.memoryCheckpoints.set(relativeFilePath, []);
+            }
+            const list = this.memoryCheckpoints.get(relativeFilePath)!;
+            list.push(content);
+            if (list.length > 20) {
+                list.shift(); // Limit to 20 checkpoints
+            }
+        } catch (e) {
+            console.error(`Failed to save memory checkpoint for ${relativeFilePath}:`, e);
+        }
+    }
+
+    public async undoLastChange(relativeFilePath: string): Promise<string> {
+        try {
+            const list = this.memoryCheckpoints.get(relativeFilePath);
+            if (!list || list.length === 0) {
+                return `Error: No checkpoints found for file "${relativeFilePath}".`;
+            }
+            const previousContent = list.pop()!;
+            const targetPath = this.resolvePath(relativeFilePath);
+            
+            if (previousContent === '') {
+                try {
+                    await fs.unlink(targetPath);
+                    return `Successfully rolled back "${relativeFilePath}" (file was deleted because it did not exist before).`;
+                } catch (e: any) {
+                    return `Error deleting file during rollback: ${e.message}`;
+                }
+            } else {
+                await fs.writeFile(targetPath, previousContent, 'utf8');
+                return `Successfully rolled back "${relativeFilePath}" to the previous state.`;
+            }
+        } catch (e: any) {
+            return `Failed to rollback "${relativeFilePath}": ${e.message}`;
+        }
+    }
+
     constructor(private workspaceRoot: string) {
         this.mcpManager = new McpManager(workspaceRoot);
         ToolsManager.activeMcpManagers.add(this.mcpManager);
@@ -1084,8 +1162,73 @@ export class ToolsManager {
                 }
                 throw new Error('No question response cached and no question handler registered.');
             }
+            case 'getDiagnostics': {
+                const diagFilePath = args.relativeFilePath || args.filePath || args.path || args.file || args.filename;
+                return await this.getDiagnostics(diagFilePath);
+            }
+            case 'undoFileChange': {
+                const undoFilePath = args.relativeFilePath || args.filePath || args.path || args.file || args.filename;
+                if (!undoFilePath) {
+                    throw new Error('Missing argument: relativeFilePath');
+                }
+                return await this.undoLastChange(undoFilePath);
+            }
             default:
                 throw new Error(`Unknown tool: ${name}`);
+        }
+    }
+
+    private async getDiagnostics(relativeFilePath?: string): Promise<string> {
+        try {
+            let urisWithDiagnostics: [vscode.Uri, vscode.Diagnostic[]][];
+            if (relativeFilePath) {
+                const targetPath = this.resolvePath(relativeFilePath);
+                const fileUri = vscode.Uri.file(targetPath);
+                const diagnostics = vscode.languages.getDiagnostics(fileUri);
+                urisWithDiagnostics = [[fileUri, diagnostics]];
+            } else {
+                urisWithDiagnostics = vscode.languages.getDiagnostics();
+            }
+
+            const formatted: string[] = [];
+            let errorCount = 0;
+            let warningCount = 0;
+
+            for (const [uri, diags] of urisWithDiagnostics) {
+                const relPath = path.relative(this.workspaceRoot, uri.fsPath).replace(/\\/g, '/');
+                // Skip files outside the workspace (e.g. settings)
+                if (relPath.startsWith('..') || path.isAbsolute(relPath)) {
+                    continue;
+                }
+                
+                const fileDiags = diags.filter(d => 
+                    d.severity === vscode.DiagnosticSeverity.Error || 
+                    d.severity === vscode.DiagnosticSeverity.Warning
+                );
+
+                if (fileDiags.length === 0) continue;
+
+                formatted.push(`File: ${relPath}`);
+                for (const d of fileDiags) {
+                    const type = d.severity === vscode.DiagnosticSeverity.Error ? 'ERROR' : 'WARNING';
+                    if (d.severity === vscode.DiagnosticSeverity.Error) errorCount++;
+                    else warningCount++;
+                    
+                    const line = d.range.start.line + 1;
+                    const col = d.range.start.character + 1;
+                    formatted.push(`  [${type}] Line ${line}, Col ${col}: ${d.message} (${d.source || 'compiler'})`);
+                }
+            }
+
+            if (formatted.length === 0) {
+                return relativeFilePath 
+                    ? `No errors or warnings found in "${relativeFilePath}".`
+                    : "No errors or warnings found in the workspace.";
+            }
+
+            return `Found ${errorCount} error(s) and ${warningCount} warning(s):\n\n` + formatted.join('\n');
+        } catch (e: any) {
+            return `Failed to retrieve diagnostics: ${e.message}`;
         }
     }
 
@@ -1248,6 +1391,7 @@ export class ToolsManager {
 
     private async writeFile(relativeFilePath: string, content: string): Promise<string> {
         try {
+            await this.saveCheckpoint(relativeFilePath);
             await this.backupFile(relativeFilePath);
             const targetPath = this.resolvePath(relativeFilePath);
             // Ensure parent directory exists
@@ -1642,6 +1786,7 @@ export class ToolsManager {
 
     private async replaceFileContent(relativeFilePath: string, targetContent: string, replacementContent: string): Promise<string> {
         try {
+            await this.saveCheckpoint(relativeFilePath);
             await this.backupFile(relativeFilePath);
             const targetPath = this.resolvePath(relativeFilePath);
             const fileUri = vscode.Uri.file(targetPath);
@@ -1715,6 +1860,7 @@ export class ToolsManager {
 
     private async multiReplaceFileContent(relativeFilePath: string, replacements: Array<{ targetContent: string; replacementContent: string }>): Promise<string> {
         try {
+            await this.saveCheckpoint(relativeFilePath);
             await this.backupFile(relativeFilePath);
             const targetPath = this.resolvePath(relativeFilePath);
             const fileUri = vscode.Uri.file(targetPath);
