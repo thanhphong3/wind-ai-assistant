@@ -3893,6 +3893,50 @@
                     messageInput.focus();
                 }
                 break;
+            case 'ctrlIEdit':
+                if (messageInput) {
+                    const modeMenu = document.getElementById('mode-dropdown-menu');
+                    if (modeMenu) {
+                        modeMenu.querySelectorAll('.dropdown-item').forEach(el => {
+                            if (el.getAttribute('data-value') === 'edit') {
+                                el.classList.add('active');
+                                const label = el.getAttribute('data-label');
+                                const labelEl = document.getElementById('selected-mode-label');
+                                if (labelEl) labelEl.textContent = label;
+                            } else {
+                                el.classList.remove('active');
+                            }
+                        });
+                        currentMode = 'edit';
+                        vscode.postMessage({
+                            type: 'selectMode',
+                            mode: 'edit'
+                        });
+                    }
+
+                    const name = message.filePath.split('/').pop().split('\\').pop();
+                    const isDup = attachedContext.some(item => 
+                        item.type === 'selection' && 
+                        item.filePath === message.filePath && 
+                        item.startLine === message.startLine && 
+                        item.endLine === message.endLine
+                    );
+                    if (!isDup) {
+                        attachedContext.push({
+                            type: 'selection',
+                            filePath: message.filePath,
+                            name: name,
+                            startLine: message.startLine,
+                            endLine: message.endLine,
+                            text: message.text,
+                            languageId: message.languageId
+                        });
+                        updateContextChips();
+                    }
+                    sendButton.disabled = false;
+                    messageInput.focus();
+                }
+                break;
             case 'toggleHistory':
                 if (historyDrawer) {
                     historyDrawer.classList.toggle('hidden');

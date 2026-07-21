@@ -1160,6 +1160,20 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    public triggerCtrlIEdit(selectedText: string, filePath: string, startLine: number, endLine: number, languageId: string) {
+        if (this._view) {
+            this._view.show(true);
+            this._view.webview.postMessage({
+                type: 'ctrlIEdit',
+                text: selectedText,
+                filePath,
+                startLine,
+                endLine,
+                languageId
+            });
+        }
+    }
+
     public async inlineEdit(selectedText: string, languageId: string, instruction: string, token?: vscode.CancellationToken): Promise<string> {
         const configIndex = (this._aiConfigs && this._aiConfigs.length > 0) ? 0 : undefined;
         const { keys, endpoint, model, configName } = this._getAPIConfig(configIndex);
@@ -1698,10 +1712,10 @@ ${errorCode}
         });
 
         this._suppressStreaming = false;
-        this._streamAsThought = (targetMode === 'agent' || targetMode === 'plan' || targetMode === 'auto' || targetMode === 'goal' || targetMode === 'grill');
+        this._streamAsThought = (targetMode === 'agent' || targetMode === 'edit' || targetMode === 'plan' || targetMode === 'auto' || targetMode === 'goal' || targetMode === 'grill');
         if (targetMode === 'plan') {
             this._currentThreadTitle = 'Analyzing Workspace & Drafting Plan';
-        } else if (targetMode === 'agent') {
+        } else if (targetMode === 'agent' || targetMode === 'edit') {
             this._currentThreadTitle = 'Analyzing Workspace & Coding';
         } else if (targetMode === 'auto') {
             this._currentThreadTitle = 'Analyzing Workspace';

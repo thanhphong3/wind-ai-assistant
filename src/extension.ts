@@ -113,35 +113,11 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.window.showInformationMessage('Please select the code you want to edit.');
                 return;
             }
-
-            const instruction = await vscode.window.showInputBox({
-                prompt: 'Enter instruction to edit the selected code',
-                placeHolder: 'Example: Add try-catch, optimize this function...'
-            });
-            if (!instruction) {
-                return;
-            }
-
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: "Wind: Processing inline code edit...",
-                cancellable: true
-            }, async (_progress, token) => {
-                try {
-                    const modifiedCode = await provider.inlineEdit(selectedText, editor.document.languageId, instruction, token);
-                    if (modifiedCode) {
-                        await editor.edit(editBuilder => {
-                            editBuilder.replace(selection, modifiedCode);
-                        });
-                        vscode.window.showInformationMessage('Inline code updated successfully.');
-                    }
-                } catch (err: any) {
-                    if (token.isCancellationRequested) {
-                        return;
-                    }
-                    vscode.window.showErrorMessage(`Inline code edit failed: ${err.message}`);
-                }
-            });
+            const filePath = vscode.workspace.asRelativePath(editor.document.uri);
+            const startLine = selection.start.line + 1;
+            const endLine = selection.end.line + 1;
+            const languageId = editor.document.languageId;
+            provider.triggerCtrlIEdit(selectedText, filePath, startLine, endLine, languageId);
         }),
         vscode.commands.registerCommand('wind-agent.openConfig', async () => {
             await provider.openConfigFile();
