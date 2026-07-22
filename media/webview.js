@@ -16,8 +16,11 @@
 
     window.toggleHtmlPreview = function(button) {
         const container = button.closest('.code-block-container');
+        if (!container) return;
         const pre = container.querySelector('pre');
         const previewWrapper = container.querySelector('.html-preview-wrapper');
+        if (!pre || !previewWrapper) return;
+        
         const isShowingPreview = !previewWrapper.classList.contains('hidden');
         
         if (isShowingPreview) {
@@ -31,17 +34,15 @@
             button.textContent = 'Code';
             
             const codeElement = pre.querySelector('code');
-            const codeText = codeElement.textContent;
+            const codeText = codeElement ? codeElement.textContent : '';
                  
             const iframe = document.createElement('iframe');
             iframe.className = 'html-preview-iframe';
-            iframe.sandbox = 'allow-scripts';
+            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+            iframe.srcdoc = codeText;
             
+            previewWrapper.innerHTML = '';
             previewWrapper.appendChild(iframe);
-            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-            iframeDoc.open();
-            iframeDoc.write(codeText);
-            iframeDoc.close();
         }
     };
 
@@ -65,14 +66,74 @@
         }, 2000);
     };
 
+    window.insertCodeAtCursor = function(button) {
+        const container = button.closest('.code-block-container');
+        const pre = container ? container.querySelector('pre') : null;
+        if (!pre) return;
+        const codeElement = pre.querySelector('code');
+        if (!codeElement) return;
+        
+        const codeText = codeElement.textContent;
+        vscode.postMessage({ type: 'insertAtCursor', text: codeText });
+
+        const originalText = button.textContent;
+        button.textContent = 'Inserted!';
+        button.style.borderColor = '#34a853';
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.style.borderColor = '';
+        }, 2000);
+    };
+
+    window.applyCodeToFile = function(button) {
+        const container = button.closest('.code-block-container');
+        const pre = container ? container.querySelector('pre') : null;
+        if (!pre) return;
+        const codeElement = pre.querySelector('code');
+        if (!codeElement) return;
+        
+        const codeText = codeElement.textContent;
+        const langSpan = container.querySelector('.code-block-lang');
+        const languageId = langSpan ? langSpan.textContent.trim() : '';
+
+        vscode.postMessage({ type: 'applyToFile', text: codeText, languageId });
+
+        const originalText = button.textContent;
+        button.textContent = 'Applied!';
+        button.style.borderColor = '#9b72cb';
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.style.borderColor = '';
+        }, 2000);
+    };
+
+    window.openExternalUrl = function(event, url) {
+        if (event) event.preventDefault();
+        vscode.postMessage({ type: 'openExternal', url });
+    };
+
     const chatContainer = document.getElementById('chat-container');
+    const scrollToBottomBtn = document.getElementById('scroll-to-bottom-btn');
     let userAtBottom = true;
     
     chatContainer.addEventListener('scroll', () => {
-        const threshold = 50;
+        const threshold = 80;
         userAtBottom = chatContainer.scrollHeight - chatContainer.clientHeight - chatContainer.scrollTop <= threshold;
+        if (scrollToBottomBtn) {
+            if (userAtBottom) {
+                scrollToBottomBtn.classList.add('hidden');
+            } else {
+                scrollToBottomBtn.classList.remove('hidden');
+            }
+        }
         hideContextMenu();
     });
+
+    if (scrollToBottomBtn) {
+        scrollToBottomBtn.addEventListener('click', () => {
+            scrollToBottom(true);
+        });
+    }
     chatContainer.addEventListener('click', (e) => {
         const previewBtn = e.target.closest('.preview-toggle-btn');
         if (previewBtn) {
@@ -2663,21 +2724,28 @@
         // Extract and temporarily store code blocks to prevent them from being formatted or escaped
         html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
             const placeholder = `___WIND_CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}___`;
-            const cleanLang = lang ? lang.toLowerCase() : '';
-            const escapedCode = escapeHtml(code.trim());
+            const cleanLang = lang ? lang.trim().toLowerCase() : '';
+            const rawCode = code.trim();
+            const escapedCode = escapeHtml(rawCode);
             
-            if (cleanLang === 'html') {
+            const isHtmlBlock = ['html', 'htm', 'xhtml', 'svg'].includes(cleanLang) || 
+                                /^\s*<!doctype\s+html/i.test(rawCode) || 
+                                /^\s*<html[\s>]/i.test(rawCode);
+            
+            if (isHtmlBlock) {
                 codeBlocks.push(`
 <div class="code-block-container html-block">
     <div class="code-block-header">
-        <span class="code-block-lang">html</span>
+        <span class="code-block-lang">${cleanLang || 'html'}</span>
         <div class="code-block-actions">
-            <button class="code-block-btn preview-toggle-btn" onclick="toggleHtmlPreview(this)">Preview</button>
-            <button class="code-block-btn copy-btn" onclick="copyCodeBlock(this)">Copy</button>
+            <button class="code-block-btn insert-btn" onclick="insertCodeAtCursor(this)" title="Insert code at cursor">Insert</button>
+            <button class="code-block-btn apply-btn" onclick="applyCodeToFile(this)" title="Apply code to editor">Apply</button>
+            <button class="code-block-btn preview-toggle-btn">Preview</button>
+            <button class="code-block-btn copy-btn">Copy</button>
         </div>
     </div>
     <div class="code-block-wrapper">
-        <pre><code class="language-html">${escapedCode}</code></pre>
+        <pre><code class="language-${cleanLang || 'html'}">${escapedCode}</code></pre>
         <div class="html-preview-wrapper hidden"></div>
     </div>
 </div>
@@ -2688,6 +2756,8 @@
     <div class="code-block-header">
         <span class="code-block-lang">${cleanLang || 'code'}</span>
         <div class="code-block-actions">
+            <button class="code-block-btn insert-btn" onclick="insertCodeAtCursor(this)" title="Insert code at cursor">Insert</button>
+            <button class="code-block-btn apply-btn" onclick="applyCodeToFile(this)" title="Apply code to editor">Apply</button>
             <button class="code-block-btn copy-btn" onclick="copyCodeBlock(this)">Copy</button>
         </div>
     </div>
@@ -2734,7 +2804,7 @@
             const headers = splitRow(headerRow);
             const numCols = headers.length;
 
-            let tableHtml = '<table>';
+            let tableHtml = '<div class="table-wrapper"><table>';
             tableHtml += '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
             tableHtml += '<tbody>';
 
@@ -2750,7 +2820,7 @@
                 tableHtml += '<tr>' + displayCols.map(c => `<td>${c}</td>`).join('') + '</tr>';
             });
 
-            tableHtml += '</tbody></table>';
+            tableHtml += '</tbody></table></div>';
             return tableHtml;
         }
 
@@ -2807,6 +2877,23 @@
         html = html.replace(/^<think\s+/i, '');
         html = html.replace(/<\/think>\s*$/i, '');
         html = html.replace(/<\/think>/gi, '');
+
+        // Parse Math / LaTeX blocks: $$...$$
+        html = html.replace(/\$\$([\s\S]+?)\$\$/g, (match, expr) => {
+            return `<div class="math-block">${expr.trim()}</div>`;
+        });
+        // Math / LaTeX inline: $...$ or \(...\)
+        html = html.replace(/\\\(([\s\S]+?)\\\)/g, (match, expr) => {
+            return `<span class="math-inline">${expr.trim()}</span>`;
+        });
+        html = html.replace(/\$([^\$\n]+)\$/g, (match, expr) => {
+            return `<span class="math-inline">${expr.trim()}</span>`;
+        });
+
+        // Markdown links: [text](url)
+        html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/gi, (match, label, url) => {
+            return `<a href="#" class="external-link" onclick="openExternalUrl(event, '${url}')">${label}</a>`;
+        });
 
         // Escape HTML characters
         html = html
@@ -2959,11 +3046,16 @@
             if (body) {
                 const wasNearBottom = userAtBottom;
 
-                body.classList.add('hidden'); // Collapse the body when finalized
+                if (!currentWorkedCard.userToggled) {
+                    body.classList.add('hidden'); // Collapse the body when finalized if user didn't manually expand
+                    const arrow = currentWorkedCard.querySelector('.worked-card-arrow');
+                    if (arrow) {
+                        arrow.textContent = '▶'; // Reset the arrow to collapsed state
+                    }
+                }
                 const activeDetails = body.querySelectorAll('details.streaming');
                 activeDetails.forEach(details => {
                     details.classList.remove('streaming');
-                    details.open = false;
                     const activeContent = details.querySelector('.thinking-content, .reasoning-content');
                     if (activeContent) {
                         activeContent.classList.remove('streaming');
@@ -2978,12 +3070,32 @@
                     }, 0);
                 }
             }
-            const arrow = currentWorkedCard.querySelector('.worked-card-arrow');
-            if (arrow) {
-                arrow.textContent = '▶'; // Reset the arrow to collapsed state
-            }
             currentWorkedCard = null;
         }
+    }
+
+    function updateWorkedCardStats(card) {
+        if (!card || !card.toolStats) return;
+        let chipsContainer = card.querySelector('.worked-card-summary-chips');
+        if (!chipsContainer) {
+            const titleEl = card.querySelector('.worked-card-title');
+            if (titleEl) {
+                chipsContainer = document.createElement('span');
+                chipsContainer.className = 'worked-card-summary-chips';
+                titleEl.after(chipsContainer);
+            }
+        }
+        if (!chipsContainer) return;
+        
+        const stats = card.toolStats;
+        let html = '';
+        if (stats.read > 0) html += `<span class="worked-stat-chip read" title="${stats.read} file(s) read">📄 ${stats.read}</span>`;
+        if (stats.write > 0) html += `<span class="worked-stat-chip write" title="${stats.write} file(s) modified">✍️ ${stats.write}</span>`;
+        if (stats.command > 0) html += `<span class="worked-stat-chip command" title="${stats.command} command(s) run">▶️ ${stats.command}</span>`;
+        if (stats.search > 0) html += `<span class="worked-stat-chip search" title="${stats.search} web search(es)">🔍 ${stats.search}</span>`;
+        if (stats.other > 0) html += `<span class="worked-stat-chip other" title="${stats.other} other action(s)">🛠️ ${stats.other}</span>`;
+        
+        chipsContainer.innerHTML = html;
     }
 
     function createWorkedCard(title = 'Thinking Process') {
@@ -2994,6 +3106,14 @@
         if (isRestoringSession) {
             currentWorkedCard.classList.add('completed');
         }
+        
+        currentWorkedCard.toolStats = {
+            read: 0,
+            write: 0,
+            command: 0,
+            search: 0,
+            other: 0
+        };
         
         workedStartTime = Date.now();
         
@@ -3024,6 +3144,7 @@
         }
         
         header.onclick = () => {
+            currentWorkedCard.userToggled = true;
             const wasNearBottom = userAtBottom;
             const isHidden = body.classList.toggle('hidden');
             arrow.textContent = isHidden ? '▶' : '▼';
@@ -3245,15 +3366,63 @@
                 <span class="error-card-arrow">▶</span>
                 <span class="error-card-icon">${icon}</span>
                 <span class="error-card-title">${escapeHtml(titleText)}</span>
+                <button class="error-card-copy-btn" type="button" title="Copy error details">Copy Error</button>
             </div>
             <div class="error-card-body hidden">
                 <div class="error-card-content">${formatMarkdown(detailsText, false)}</div>
+                <div class="error-card-actions">
+                    <button class="error-action-btn retry-btn" type="button">🔄 Retry Request</button>
+                    <button class="error-action-btn settings-btn" type="button">⚙️ Open Settings</button>
+                </div>
             </div>
         `;
 
         const header = card.querySelector('.error-card-header');
         const body = card.querySelector('.error-card-body');
         const arrow = card.querySelector('.error-card-arrow');
+        const copyBtn = card.querySelector('.error-card-copy-btn');
+        const retryBtn = card.querySelector('.error-action-btn.retry-btn');
+        const settingsActionBtn = card.querySelector('.error-action-btn.settings-btn');
+
+        if (copyBtn) {
+            copyBtn.onclick = (e) => {
+                e.stopPropagation();
+                vscode.postMessage({ type: 'copyText', text: detailsText });
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => { copyBtn.textContent = 'Copy Error'; }, 2000);
+            };
+        }
+
+        if (retryBtn) {
+            retryBtn.onclick = (e) => {
+                e.stopPropagation();
+                const lastUserBubble = document.querySelector('.message-row.user:last-of-type .message-bubble');
+                const lastText = lastUserBubble ? lastUserBubble.innerText.trim() : '';
+                if (lastText) {
+                    const activeModelItem = document.querySelector('#model-dropdown-menu .dropdown-item.active');
+                    const selectedModel = activeModelItem ? activeModelItem.getAttribute('data-value') : 'gemini-3.5-flash-high';
+                    const configIndexAttr = activeModelItem ? activeModelItem.getAttribute('data-config-index') : null;
+                    const configIndex = configIndexAttr !== null ? parseInt(configIndexAttr, 10) : undefined;
+                    vscode.postMessage({
+                        type: 'retryLastUserMessage',
+                        text: lastText,
+                        model: selectedModel,
+                        mode: currentMode,
+                        configIndex: configIndex
+                    });
+                }
+            };
+        }
+
+        if (settingsActionBtn) {
+            settingsActionBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (settingsDrawer) {
+                    settingsDrawer.classList.remove('hidden');
+                    vscode.postMessage({ type: 'getSettings' });
+                }
+            };
+        }
 
         header.onclick = (e) => {
             e.stopPropagation();
@@ -3384,6 +3553,32 @@
                 enterEditMode(row, text, index);
             };
             bubbleWrapper.appendChild(editBtn);
+        } else if (sender === 'agent' && !isStreamStart && text) {
+            const actionsBar = document.createElement('div');
+            actionsBar.className = 'message-actions-bar';
+            
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'message-action-btn copy-msg-btn';
+            copyBtn.title = 'Copy response';
+            copyBtn.type = 'button';
+            copyBtn.innerHTML = `
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>Copy</span>`;
+            copyBtn.onclick = (e) => {
+                e.stopPropagation();
+                vscode.postMessage({ type: 'copyText', text: text });
+                const span = copyBtn.querySelector('span');
+                if (span) {
+                    const orig = span.textContent;
+                    span.textContent = 'Copied!';
+                    setTimeout(() => { span.textContent = orig; }, 2000);
+                }
+            };
+            actionsBar.appendChild(copyBtn);
+            bubbleWrapper.appendChild(actionsBar);
         }
 
         msgContent.appendChild(bubbleWrapper);
@@ -3534,6 +3729,17 @@
         if (!currentWorkedCard) {
             createWorkedCard();
         }
+        
+        // Track statistics in current worked card
+        if (currentWorkedCard && currentWorkedCard.toolStats) {
+            if (toolName === 'readFile' || toolName === 'viewFile') currentWorkedCard.toolStats.read++;
+            else if (toolName === 'writeFile' || toolName === 'replaceFileContent' || toolName === 'multiReplaceFileContent') currentWorkedCard.toolStats.write++;
+            else if (toolName === 'runCommand' || toolName === 'sendCommandInput' || toolName === 'getCommandStatus') currentWorkedCard.toolStats.command++;
+            else if (toolName === 'searchWeb') currentWorkedCard.toolStats.search++;
+            else currentWorkedCard.toolStats.other++;
+            updateWorkedCardStats(currentWorkedCard);
+        }
+
         const body = currentWorkedCard.querySelector('.worked-card-body');
         const card = document.createElement('div');
         card.classList.add('tool-call-card');
@@ -3547,43 +3753,74 @@
         }
 
         let actionText = '';
-        if (toolName === 'writeFile') {
-            actionText = `Creating/Writing file <strong>${escapeHtml(args.relativeFilePath || '')}</strong>`;
-        } else if (toolName === 'readFile') {
+        let toolIcon = '🛠️';
+        let categoryClass = 'other';
+
+        if (toolName === 'writeFile' || toolName === 'replaceFileContent' || toolName === 'multiReplaceFileContent') {
+            toolIcon = '✍️';
+            categoryClass = 'write';
+            const file = args.relativeFilePath || args.targetFile || '';
+            actionText = `Modifying <strong>${escapeHtml(file)}</strong>`;
+        } else if (toolName === 'readFile' || toolName === 'viewFile') {
+            toolIcon = '📄';
+            categoryClass = 'read';
+            const file = args.relativeFilePath || args.absolutePath || '';
             if (args.startLine !== undefined && args.endLine !== undefined) {
-                actionText = `Reading file <strong>${escapeHtml(args.relativeFilePath || '')}</strong> (lines ${args.startLine}-${args.endLine})`;
+                actionText = `Reading <strong>${escapeHtml(file)}</strong> (L${args.startLine}-${args.endLine})`;
             } else {
-                actionText = `Reading file <strong>${escapeHtml(args.relativeFilePath || '')}</strong>`;
+                actionText = `Reading <strong>${escapeHtml(file)}</strong>`;
             }
         } else if (toolName === 'runCommand') {
+            toolIcon = '▶️';
+            categoryClass = 'command';
             if (args.runInBackground) {
-                actionText = `Running command in background: <code>${escapeHtml(args.command || '')}</code>`;
+                actionText = `Background command: <code>${escapeHtml(args.command || '')}</code>`;
             } else {
-                actionText = `Running command: <code>${escapeHtml(args.command || '')}</code>`;
+                actionText = `Run command: <code>${escapeHtml(args.command || '')}</code>`;
             }
         } else if (toolName === 'listFiles') {
+            toolIcon = '📂';
+            categoryClass = 'list';
             actionText = `Listing workspace files`;
         } else if (toolName === 'listDir') {
-            actionText = `Listing directory contents of <strong>${escapeHtml(args.relativeDirPath || '.')}</strong>`;
+            toolIcon = '📂';
+            categoryClass = 'list';
+            actionText = `Listing <strong>${escapeHtml(args.relativeDirPath || '.')}</strong>`;
         } else if (toolName === 'searchWeb') {
-            actionText = `Searching the web for: <strong>"${escapeHtml(args.query || '')}"</strong>`;
+            toolIcon = '🔍';
+            categoryClass = 'search';
+            actionText = `Searching web: <strong>"${escapeHtml(args.query || '')}"</strong>`;
         } else if (toolName === 'getCommandStatus') {
-            actionText = `Checking status of background command <code>${escapeHtml(args.commandId || '')}</code>`;
+            toolIcon = '⚙️';
+            categoryClass = 'command';
+            actionText = `Checking command status: <code>${escapeHtml(args.commandId || '')}</code>`;
         } else if (toolName === 'sendCommandInput') {
+            toolIcon = '⚙️';
+            categoryClass = 'command';
             if (args.terminate) {
-                actionText = `Terminating background command <code>${escapeHtml(args.commandId || '')}</code>`;
+                actionText = `Terminating command: <code>${escapeHtml(args.commandId || '')}</code>`;
             } else {
-                actionText = `Sending input to background command <code>${escapeHtml(args.commandId || '')}</code>`;
+                actionText = `Input to command: <code>${escapeHtml(args.commandId || '')}</code>`;
             }
         } else {
-            actionText = `Running tool: <strong>${escapeHtml(toolName)}</strong>`;
+            toolIcon = '🛠️';
+            categoryClass = 'other';
+            actionText = `Tool: <strong>${escapeHtml(toolName)}</strong>`;
         }
 
         card.innerHTML = `
             <div class="tool-call-main">
-                <div class="tool-status-icon ${requiresApproval ? 'pending' : 'running'}"></div>
+                <span class="tool-category-badge ${categoryClass}" title="${escapeHtml(toolName)}">${toolIcon}</span>
                 <div class="tool-action-text">${actionText}</div>
+                <div class="tool-status-icon ${requiresApproval ? 'pending' : 'running'}"></div>
                 <div class="tool-actions-inline" id="tool-footer-${toolId}"></div>
+            </div>
+            <div class="tool-output-container hidden" id="tool-output-${toolId}">
+                <div class="tool-output-header">
+                    <span>Result Output</span>
+                    <button class="tool-output-close-btn" type="button" title="Close preview">✕</button>
+                </div>
+                <pre class="tool-output-content"></pre>
             </div>
             <div class="tool-error-container hidden"></div>
         `;
@@ -3687,6 +3924,43 @@
         const footer = card.querySelector(`#tool-footer-${toolId}`);
         if (footer) {
             footer.innerHTML = '';
+        }
+
+        // Add output snippet toggle button if resultMessage exists and was successful
+        if (resultMessage && resultMessage.trim()) {
+            const main = card.querySelector('.tool-call-main');
+            const outputContainer = card.querySelector(`#tool-output-${toolId}`);
+            if (main && outputContainer && !main.querySelector('.tool-output-toggle-btn')) {
+                const toggleBtn = document.createElement('button');
+                toggleBtn.className = 'tool-output-toggle-btn';
+                toggleBtn.type = 'button';
+                toggleBtn.title = 'View tool output';
+                toggleBtn.innerHTML = `<span>Output</span><span class="toggle-arrow">▶</span>`;
+                
+                const pre = outputContainer.querySelector('.tool-output-content');
+                if (pre) {
+                    pre.textContent = resultMessage.length > 3000 ? resultMessage.substring(0, 3000) + '\n... [truncated]' : resultMessage;
+                }
+
+                toggleBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const isHidden = outputContainer.classList.toggle('hidden');
+                    const arrowSpan = toggleBtn.querySelector('.toggle-arrow');
+                    if (arrowSpan) arrowSpan.textContent = isHidden ? '▶' : '▼';
+                };
+
+                const closeBtn = outputContainer.querySelector('.tool-output-close-btn');
+                if (closeBtn) {
+                    closeBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        outputContainer.classList.add('hidden');
+                        const arrowSpan = toggleBtn.querySelector('.toggle-arrow');
+                        if (arrowSpan) arrowSpan.textContent = '▶';
+                    };
+                }
+
+                main.appendChild(toggleBtn);
+            }
         }
 
         const body = currentWorkedCard ? currentWorkedCard.querySelector('.worked-card-body') : null;

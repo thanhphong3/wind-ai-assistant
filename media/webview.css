@@ -412,9 +412,27 @@ body {
 .tool-call-main {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     width: 100%;
 }
+
+.tool-category-badge {
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    flex-shrink: 0;
+}
+
+.tool-category-badge.read { background: rgba(66, 133, 244, 0.12); }
+.tool-category-badge.write { background: rgba(244, 160, 0, 0.12); }
+.tool-category-badge.command { background: rgba(219, 68, 85, 0.12); }
+.tool-category-badge.search { background: rgba(155, 114, 203, 0.12); }
+.tool-category-badge.list { background: rgba(54, 179, 126, 0.12); }
 
 .tool-action-text {
     font-size: 12px;
@@ -432,6 +450,81 @@ body {
     font-family: 'Consolas', monospace;
     font-size: 11px;
     color: #e8a2a2;
+}
+
+.tool-output-toggle-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 10px;
+    padding: 2px 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.15s ease;
+}
+
+.tool-output-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+
+.tool-output-container {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-top: 4px;
+    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tool-output-container.hidden {
+    display: none !important;
+}
+
+.tool-output-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tool-output-close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 2px;
+}
+
+.tool-output-close-btn:hover {
+    color: var(--text-primary);
+}
+
+.tool-output-content {
+    margin: 0;
+    max-height: 180px;
+    overflow-y: auto;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-secondary);
 }
 
 .tool-actions-inline {
@@ -1564,7 +1657,74 @@ textarea::placeholder {
 }
 
 .worked-card-title {
+    flex: none;
+    margin-right: 6px;
+}
+
+.worked-card-summary-chips {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     flex: 1;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.worked-card-summary-chips::-webkit-scrollbar {
+    display: none;
+}
+
+.worked-stat-chip {
+    font-size: 10.5px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+    font-weight: 500;
+    white-space: nowrap;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    transition: all 0.2s ease;
+}
+
+.worked-stat-chip.read { color: #8ab4f8; background: rgba(66, 133, 244, 0.1); border-color: rgba(66, 133, 244, 0.2); }
+.worked-stat-chip.write { color: #fdd663; background: rgba(244, 160, 0, 0.1); border-color: rgba(244, 160, 0, 0.2); }
+.worked-stat-chip.command { color: #f28b82; background: rgba(219, 68, 85, 0.1); border-color: rgba(219, 68, 85, 0.2); }
+.worked-stat-chip.search { color: #c58af9; background: rgba(155, 114, 203, 0.1); border-color: rgba(155, 114, 203, 0.2); }
+.worked-stat-chip.other { color: #81c995; background: rgba(54, 179, 126, 0.1); border-color: rgba(54, 179, 126, 0.2); }
+
+.message-actions-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.message-row.agent:hover .message-actions-bar {
+    opacity: 1;
+}
+
+.message-action-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 10.5px;
+    padding: 2px 7px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.15s ease;
+}
+
+.message-action-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
 }
 
 .worked-card-status {
@@ -3089,6 +3249,24 @@ textarea::placeholder {
     text-align: left;
 }
 
+.error-card-copy-btn {
+    background: transparent;
+    border: 1px solid rgba(234, 67, 53, 0.3);
+    border-radius: 4px;
+    color: #f28b82;
+    font-size: 10px;
+    padding: 2px 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-left: 4px;
+}
+
+.error-card-copy-btn:hover {
+    background: rgba(234, 67, 53, 0.15);
+    border-color: rgba(234, 67, 53, 0.5);
+    color: #fff;
+}
+
 .error-card-body {
     padding: 10px 0 2px 0;
     border-top: 1px dashed rgba(234, 67, 53, 0.15);
@@ -3846,14 +4024,24 @@ textarea::placeholder {
 
 .html-preview-wrapper {
     width: 100%;
-    height: 400px;
-    background: white;
+    height: 420px;
+    background: #ffffff;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-top: 8px;
+    box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.1);
+}
+
+.html-preview-wrapper.hidden {
+    display: none !important;
 }
 
 .html-preview-iframe {
     width: 100%;
     height: 100%;
     border: none;
+    background: #ffffff;
+    display: block;
 }
 
 /* Missing UI Fixes */
@@ -4024,3 +4212,182 @@ textarea::placeholder {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* --- UI/UX Optimizations --- */
+
+/* 1. Table Wrapper with horizontal scroll */
+.table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    margin: 14px 0;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.table-wrapper table {
+    margin: 0;
+    border: none;
+    width: 100%;
+}
+
+/* 2. Code Block Action Buttons (Insert at Cursor, Apply to File) */
+.code-block-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.code-block-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 3px 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.15s ease;
+}
+
+.code-block-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: var(--text-primary);
+    border-color: var(--accent-blue);
+}
+
+.code-block-btn.insert-btn:hover {
+    border-color: #34a853;
+    color: #81c995;
+}
+
+.code-block-btn.apply-btn:hover {
+    border-color: #9b72cb;
+    color: #c5a9e6;
+}
+
+/* 3. Floating Scroll To Bottom Button */
+.scroll-to-bottom-btn {
+    position: absolute;
+    bottom: 16px;
+    right: 20px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    z-index: 20;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, background 0.15s ease;
+}
+
+.scroll-to-bottom-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-blue);
+    transform: translateY(-2px) scale(1.05);
+}
+
+.scroll-to-bottom-btn.hidden {
+    display: none !important;
+}
+
+/* 4. Enhanced Error Card with Quick Actions */
+.error-card-container {
+    background: rgba(234, 67, 53, 0.08);
+    border: 1px solid rgba(234, 67, 53, 0.3);
+    border-left: 4px solid var(--danger-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.error-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #f28b82;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.error-card-body {
+    font-size: 12.5px;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+.error-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.error-action-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 5px;
+    color: var(--text-primary);
+    font-size: 11.5px;
+    padding: 4px 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.15s ease;
+}
+
+.error-action-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: var(--text-primary);
+}
+
+.error-action-btn.retry-btn {
+    background: rgba(66, 133, 244, 0.15);
+    border-color: rgba(66, 133, 244, 0.4);
+    color: #8ab4f8;
+}
+
+.error-action-btn.retry-btn:hover {
+    background: rgba(66, 133, 244, 0.3);
+    border-color: var(--accent-blue);
+    color: #ffffff;
+}
+
+/* 5. Math / LaTeX formatting */
+.math-inline {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: 'KaTeX_Main', 'Cambria Math', 'Times New Roman', serif;
+    font-style: italic;
+    color: #e8eaed;
+}
+
+.math-block {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 10px 0;
+    overflow-x: auto;
+    font-family: 'KaTeX_Main', 'Cambria Math', 'Times New Roman', serif;
+    text-align: center;
+    font-size: 14px;
+}
+
+/* 6. Worked Card transition stability */
+.worked-card-body {
+    transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+

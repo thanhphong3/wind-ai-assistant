@@ -767,6 +767,55 @@ export class WindWebviewProvider implements vscode.WebviewViewProvider {
                         await vscode.env.clipboard.writeText(data.text);
                     }
                     break;
+                case 'insertAtCursor':
+                    if (data.text) {
+                        const activeEditor = vscode.window.activeTextEditor;
+                        if (activeEditor) {
+                            await activeEditor.edit(editBuilder => {
+                                editBuilder.insert(activeEditor.selection.active, data.text);
+                            });
+                            vscode.window.showInformationMessage('Code inserted at cursor.');
+                        } else {
+                            vscode.window.showWarningMessage('No active editor found to insert code.');
+                        }
+                    }
+                    break;
+                case 'applyToFile':
+                    if (data.text) {
+                        const activeEditor = vscode.window.activeTextEditor;
+                        if (activeEditor) {
+                            await activeEditor.edit(editBuilder => {
+                                if (!activeEditor.selection.isEmpty) {
+                                    editBuilder.replace(activeEditor.selection, data.text);
+                                } else {
+                                    const fullRange = new vscode.Range(
+                                        activeEditor.document.positionAt(0),
+                                        activeEditor.document.positionAt(activeEditor.document.getText().length)
+                                    );
+                                    editBuilder.replace(fullRange, data.text);
+                                }
+                            });
+                            vscode.window.showInformationMessage('Code applied to active editor.');
+                        } else {
+                            const newDoc = await vscode.workspace.openTextDocument({ content: data.text, language: data.languageId || 'text' });
+                            await vscode.window.showTextDocument(newDoc);
+                        }
+                    }
+                    break;
+                case 'openExternal':
+                    if (data.url) {
+                        try {
+                            await vscode.env.openExternal(vscode.Uri.parse(data.url));
+                        } catch (e: any) {
+                            vscode.window.showErrorMessage(`Failed to open link: ${e.message}`);
+                        }
+                    }
+                    break;
+                case 'retryLastUserMessage':
+                    if (data.text) {
+                        await this._handleUserMessage(data.text, data.model, data.mode, data.configIndex);
+                    }
+                    break;
                 case 'openFile': {
                     const workspaceFolders = vscode.workspace.workspaceFolders;
                     if (workspaceFolders && workspaceFolders.length > 0) {
